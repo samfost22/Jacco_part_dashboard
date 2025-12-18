@@ -375,8 +375,7 @@ def render_sync_page(lang: Language):
         ```toml
         [zuper]
         api_key = "your_zuper_api_key"
-        org_uid = "your_organization_uid"
-        base_url = "https://us-east-1.zuperpro.com"
+        base_url = "https://us-east-1.zuperpro.com/api"
         ```
         """)
         return

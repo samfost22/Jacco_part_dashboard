@@ -32,7 +32,7 @@ def is_zuper_configured() -> bool:
     """Check if Zuper API secrets are configured."""
     try:
         zuper_config = st.secrets.get("zuper", {})
-        required_keys = ["api_key", "org_uid", "base_url"]
+        required_keys = ["api_key", "base_url"]
         return all(key in zuper_config for key in required_keys)
     except Exception:
         return False
@@ -44,13 +44,12 @@ class ZuperAPIClient:
     READ-ONLY operations for fetching job data.
     """
 
-    def __init__(self, api_key: str = None, org_uid: str = None, base_url: str = None):
+    def __init__(self, api_key: str = None, base_url: str = None):
         """
         Initialize Zuper API client.
 
         Args:
             api_key: Zuper API key (from secrets if not provided)
-            org_uid: Organization UID (from secrets if not provided)
             base_url: Base API URL (from secrets if not provided)
 
         Raises:
@@ -63,7 +62,6 @@ class ZuperAPIClient:
 
         zuper_config = st.secrets.get("zuper", {})
         self.api_key = api_key or zuper_config.get("api_key")
-        self.org_uid = org_uid or zuper_config.get("org_uid")
         self.base_url = base_url or zuper_config.get("base_url")
 
         self.headers = {
@@ -203,11 +201,11 @@ class ZuperAPIClient:
         Returns:
             Dictionary containing jobs data and pagination info
         """
-        endpoint = f"organizations/{self.org_uid}/jobs"
+        endpoint = "jobs"
 
         params = {
             "page": page,
-            "pageSize": page_size
+            "count": page_size
         }
 
         if filters:
@@ -227,7 +225,7 @@ class ZuperAPIClient:
         Returns:
             Job data dictionary
         """
-        endpoint = f"organizations/{self.org_uid}/jobs/{job_uid}"
+        endpoint = f"jobs/{job_uid}"
 
         logger.info(f"Fetching job {job_uid}")
 
@@ -316,8 +314,9 @@ class ZuperAPIClient:
             True if connection successful, False otherwise
         """
         try:
-            endpoint = f"organizations/{self.org_uid}"
-            self._make_request("GET", endpoint)
+            # Test by fetching first page of jobs
+            endpoint = "jobs"
+            self._make_request("GET", endpoint, params={"count": 1})
             logger.info("API connection test successful")
             return True
         except Exception as e:

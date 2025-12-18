@@ -52,9 +52,6 @@ def initialize_session_state():
     if 'last_sync' not in st.session_state:
         st.session_state.last_sync = None
 
-    if 'selected_status' not in st.session_state:
-        st.session_state.selected_status = "All"
-
 
 def render_sidebar():
     """Render sidebar with navigation and settings."""
@@ -119,7 +116,9 @@ def render_sync_info(lang: Language):
         return
 
     try:
-        sync_manager = SyncManager(get_zuper_client())
+        # Only try to get sync info if API is configured
+        api_client = get_zuper_client()
+        sync_manager = SyncManager(api_client)
         last_sync = sync_manager.get_last_sync_info()
 
         if last_sync:
@@ -130,28 +129,30 @@ def render_sync_info(lang: Language):
             st.write(f"**Status:** {status}")
 
             if status == 'completed':
-                jobs_created = last_sync.get('jobs_created', 0)
-                jobs_updated = last_sync.get('jobs_updated', 0)
+                jobs_created = last_sync.get('jobs_created', 0) or 0
+                jobs_updated = last_sync.get('jobs_updated', 0) or 0
                 st.write(f"Created: {jobs_created}")
                 st.write(f"Updated: {jobs_updated}")
         else:
-            st.info("No sync data available")
+            st.info("No sync yet - click Sync to fetch data")
 
-    except (DatabaseNotConfiguredError, ZuperAPINotConfiguredError) as e:
-        logger.warning(f"Services not configured: {e}")
-        st.info("Services not configured")
+    except ZuperAPINotConfiguredError:
+        st.info("API not configured")
     except Exception as e:
-        logger.error(f"Error fetching sync info: {e}")
-        st.warning("Unable to fetch sync information")
+        logger.debug(f"Sync info not available: {e}")
+        st.info("No sync data")
 
 
-def render_status_tiles(jobs_df: pd.DataFrame, lang: Language):
+def render_status_tiles(jobs_df: pd.DataFrame, lang: Language) -> str:
     """
-    Render clickable status tiles for filtering.
+    Render status filter using radio buttons with counts.
 
     Args:
         jobs_df: DataFrame with all jobs
         lang: Language instance for translations
+
+    Returns:
+        Selected status filter
     """
     # Get status counts
     status_counts = jobs_df['job_status'].value_counts().to_dict()
@@ -170,43 +171,26 @@ def render_status_tiles(jobs_df: pd.DataFrame, lang: Language):
         "Canceled"
     ]
 
-    # Create columns for status tiles
-    cols = st.columns(len(status_order))
+    # Build options with counts
+    options_with_counts = []
+    for status in status_order:
+        if status == "All":
+            count = total_jobs
+        else:
+            count = status_counts.get(status, 0)
+        options_with_counts.append(f"{status} ({count})")
 
-    for idx, status in enumerate(status_order):
-        with cols[idx]:
-            if status == "All":
-                count = total_jobs
-                color = "#607D8B"  # Gray
-            else:
-                count = status_counts.get(status, 0)
-                # Get color from the status_badge colors
-                color_map = {
-                    "New Ticket": "#3498db",
-                    "Received Request": "#9b59b6",
-                    "Parts On Order": "#f39c12",
-                    "Shop Pick UP": "#27ae60",
-                    "Shipped": "#16a085",
-                    "Parts delivered": "#2ecc71",
-                    "Done": "#2ecc71",
-                    "Canceled": "#95a5a6"
-                }
-                color = color_map.get(status, "#607D8B")
+    # Use radio buttons for selection (more stable than multiple buttons)
+    selected_option = st.radio(
+        "Filter by Status",
+        options=options_with_counts,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-            # Determine if this tile is selected
-            is_selected = st.session_state.selected_status == status
-
-            # Create clickable tile using button
-            button_style = "primary" if is_selected else "secondary"
-
-            if st.button(
-                f"{status}\n({count})",
-                key=f"status_tile_{status}",
-                use_container_width=True,
-                type=button_style
-            ):
-                st.session_state.selected_status = status
-                st.rerun()
+    # Extract status name from selection (remove count)
+    selected_status = selected_option.rsplit(" (", 1)[0]
+    return selected_status
 
 
 def render_dashboard_page(lang: Language):
@@ -233,16 +217,16 @@ def render_dashboard_page(lang: Language):
         st.info("Please run a data sync to populate the database.")
         return
 
-    # Display clickable status tiles
+    # Display status filter tiles
     st.subheader("Filter by Status")
-    render_status_tiles(jobs_df, lang)
+    selected_status = render_status_tiles(jobs_df, lang)
 
     st.divider()
 
-    # Apply status filter based on selected tile
+    # Apply status filter based on selection
     filtered_df = jobs_df.copy()
-    if st.session_state.selected_status != "All":
-        filtered_df = filtered_df[filtered_df['job_status'] == st.session_state.selected_status]
+    if selected_status != "All":
+        filtered_df = filtered_df[filtered_df['job_status'] == selected_status]
 
     # Search box
     search_term = st.text_input(

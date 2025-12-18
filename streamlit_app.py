@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Import components and utilities
 from database.queries import JobQueries
-from database.connection import is_database_configured, DatabaseNotConfiguredError
+from database.connection import is_database_configured, DatabaseNotConfiguredError, init_database
 from components.job_card import render_job_card, render_job_list, render_job_metrics
 from components.bulk_lookup import render_bulk_lookup
 from components.parts_inventory import render_parts_inventory
@@ -30,6 +30,13 @@ from utils.language import Language
 from utils.formatters import format_datetime, format_status, status_badge
 from utils.gps_helpers import format_map_data, get_center_point
 from config.settings import AppSettings, FeatureFlags
+
+# Initialize database on startup
+try:
+    init_database()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.warning(f"Database initialization skipped: {e}")
 
 
 # Page configuration
@@ -111,17 +118,15 @@ def render_sync_info(lang: Language):
     """
     st.subheader(lang.get("last_sync"))
 
-    # Check if services are configured
-    if not is_database_configured():
-        st.info("Database not configured")
-        return
-
-    if not is_zuper_configured():
-        st.info("API not configured")
-        return
-
     try:
-        sync_manager = SyncManager(get_zuper_client())
+        # Try to get last sync info from database
+        from src.sync.sync_manager import SyncManager
+
+        class DummyClient:
+            pass
+
+        # Create a minimal sync manager just to read sync log
+        sync_manager = SyncManager(DummyClient())
         last_sync = sync_manager.get_last_sync_info()
 
         if last_sync:
@@ -137,45 +142,34 @@ def render_sync_info(lang: Language):
                 st.write(f"Created: {jobs_created}")
                 st.write(f"Updated: {jobs_updated}")
         else:
-            st.info("No sync data available")
+            st.info("No sync data yet")
 
-    except (DatabaseNotConfiguredError, ZuperAPINotConfiguredError) as e:
-        logger.warning(f"Services not configured: {e}")
-        st.info("Services not configured")
     except Exception as e:
-        logger.error(f"Error fetching sync info: {e}")
-        st.warning("Unable to fetch sync information")
+        logger.debug(f"Could not fetch sync info: {e}")
+        st.info("No sync data yet")
 
 
 def render_configuration_error():
     """Render configuration error message with setup instructions."""
-    st.error("⚠️ Application Not Configured")
+    st.error("⚠️ Zuper API Not Configured")
 
     st.markdown("""
     ### Setup Required
 
-    This application requires the following secrets to be configured:
-
-    **Database Configuration:**
-    ```toml
-    [database]
-    host = "your-database-host"
-    port = 5432
-    database = "your-database-name"
-    user = "your-username"
-    password = "your-password"
-    ```
+    This application requires the Zuper API to be configured:
 
     **Zuper API Configuration:**
     ```toml
     [zuper]
     api_key = "your-api-key"
     org_uid = "your-organization-uid"
-    base_url = "https://api.zuper.co/api/v1"
+    base_url = "https://us-east-1.zuperpro.com"
     ```
 
     For Streamlit Cloud, add these in the app settings under "Secrets".
     For local development, create a `.streamlit/secrets.toml` file.
+
+    **Note:** The database uses SQLite and is created automatically.
     """)
 
 
@@ -188,18 +182,10 @@ def render_dashboard_page(lang: Language):
     """
     st.title(lang.get("eu_parts_jobs"))
 
-    # Check if database is configured
-    if not is_database_configured():
-        render_configuration_error()
-        return
-
     # Load data
     try:
         with st.spinner(lang.get("loading")):
             jobs_df = JobQueries.get_all_eu_parts_jobs()
-    except DatabaseNotConfiguredError:
-        render_configuration_error()
-        return
     except Exception as e:
         logger.error(f"Error loading jobs: {e}")
         st.error(f"Failed to load data: {str(e)}")
@@ -208,7 +194,10 @@ def render_dashboard_page(lang: Language):
 
     if jobs_df.empty:
         st.warning(lang.get("no_jobs_found"))
-        st.info("Please run a data sync to populate the database.")
+        if is_zuper_configured():
+            st.info("Please run a data sync to populate the database.")
+        else:
+            render_configuration_error()
         return
 
     # Display metrics
@@ -391,11 +380,6 @@ def render_job_lookup_page(lang: Language):
     """
     st.title(lang.get("job_lookup"))
 
-    # Check configuration
-    if not is_database_configured():
-        render_configuration_error()
-        return
-
     st.markdown("""
     Search for a specific job by job number.
     """)
@@ -441,8 +425,8 @@ def render_sync_page(lang: Language):
     """
     st.title(lang.get("sync"))
 
-    # Check configuration
-    if not is_database_configured() or not is_zuper_configured():
+    # Check Zuper API configuration
+    if not is_zuper_configured():
         render_configuration_error()
         return
 

@@ -105,8 +105,16 @@ class SyncManager:
         Returns:
             "created" or "updated" depending on operation
         """
+        job_uid = job_data.get("jobUid")
+
+        # First check if job exists
+        check_query = "SELECT 1 FROM jobs WHERE job_uid = ?"
+        results, _ = execute_query(check_query, (job_uid,), fetch=True)
+        exists = len(results) > 0
+
+        # Use INSERT OR REPLACE for SQLite
         query = """
-        INSERT INTO jobs (
+        INSERT OR REPLACE INTO jobs (
             job_uid,
             job_number,
             title,
@@ -130,46 +138,22 @@ class SyncManager:
             parts_status,
             parts_delivered_date,
             custom_fields,
-            tags
+            tags,
+            last_synced
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, datetime('now')
         )
-        ON CONFLICT (job_uid) DO UPDATE SET
-            job_number = EXCLUDED.job_number,
-            title = EXCLUDED.title,
-            description = EXCLUDED.description,
-            job_status = EXCLUDED.job_status,
-            job_category = EXCLUDED.job_category,
-            priority = EXCLUDED.priority,
-            customer_name = EXCLUDED.customer_name,
-            customer_uid = EXCLUDED.customer_uid,
-            job_address = EXCLUDED.job_address,
-            latitude = EXCLUDED.latitude,
-            longitude = EXCLUDED.longitude,
-            assigned_technician = EXCLUDED.assigned_technician,
-            technician_uid = EXCLUDED.technician_uid,
-            scheduled_start_time = EXCLUDED.scheduled_start_time,
-            scheduled_end_time = EXCLUDED.scheduled_end_time,
-            actual_start_time = EXCLUDED.actual_start_time,
-            actual_end_time = EXCLUDED.actual_end_time,
-            created_time = EXCLUDED.created_time,
-            modified_time = EXCLUDED.modified_time,
-            parts_status = EXCLUDED.parts_status,
-            parts_delivered_date = EXCLUDED.parts_delivered_date,
-            custom_fields = EXCLUDED.custom_fields,
-            tags = EXCLUDED.tags
-        RETURNING (xmax = 0) AS inserted
         """
 
         # Extract and prepare job data
         params = (
-            job_data.get("jobUid"),
+            job_uid,
             job_data.get("jobNumber"),
             job_data.get("title"),
             job_data.get("description"),
-            job_data.get("jobStatus"),  # Use job_status, not current_stage
+            job_data.get("jobStatus"),
             job_data.get("jobCategory"),
             job_data.get("priority"),
             job_data.get("customerName"),
@@ -179,34 +163,31 @@ class SyncManager:
             job_data.get("longitude"),
             job_data.get("assignedTechnician"),
             job_data.get("technicianUid"),
-            self._parse_datetime(job_data.get("scheduledStartTime")),
-            self._parse_datetime(job_data.get("scheduledEndTime")),
-            self._parse_datetime(job_data.get("actualStartTime")),
-            self._parse_datetime(job_data.get("actualEndTime")),
-            self._parse_datetime(job_data.get("createdTime")),
-            self._parse_datetime(job_data.get("modifiedTime")),
+            self._format_datetime(job_data.get("scheduledStartTime")),
+            self._format_datetime(job_data.get("scheduledEndTime")),
+            self._format_datetime(job_data.get("actualStartTime")),
+            self._format_datetime(job_data.get("actualEndTime")),
+            self._format_datetime(job_data.get("createdTime")),
+            self._format_datetime(job_data.get("modifiedTime")),
             job_data.get("partsStatus"),
-            self._parse_datetime(job_data.get("partsDeliveredDate")),
+            self._format_datetime(job_data.get("partsDeliveredDate")),
             json.dumps(job_data.get("customFields", {})),
-            job_data.get("tags", [])
+            json.dumps(job_data.get("tags", []))
         )
 
-        result, columns = execute_query(query, params, fetch=True)
+        execute_query(query, params, fetch=False)
 
-        if result and result[0][0]:  # inserted = True
-            return "created"
-        else:
-            return "updated"
+        return "updated" if exists else "created"
 
-    def _parse_datetime(self, dt_string: Optional[str]) -> Optional[datetime]:
+    def _format_datetime(self, dt_string: Optional[str]) -> Optional[str]:
         """
-        Parse datetime string from Zuper API.
+        Format datetime string for SQLite storage.
 
         Args:
             dt_string: Datetime string in ISO format
 
         Returns:
-            datetime object or None
+            Formatted datetime string or None
         """
         if not dt_string:
             return None
@@ -214,11 +195,11 @@ class SyncManager:
         try:
             # Handle ISO format with timezone
             if 'T' in dt_string:
-                # Remove timezone info if present and parse
                 dt_string = dt_string.replace('Z', '+00:00')
-                return datetime.fromisoformat(dt_string)
+                dt = datetime.fromisoformat(dt_string)
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
             else:
-                return datetime.strptime(dt_string, '%Y-%m-%d %H:%M:%S')
+                return dt_string
         except (ValueError, AttributeError) as e:
             logger.warning(f"Failed to parse datetime: {dt_string}, error: {e}")
             return None
@@ -232,11 +213,12 @@ class SyncManager:
         """
         query = """
         INSERT INTO sync_log (sync_started, status)
-        VALUES (%s, 'running')
+        VALUES (?, 'running')
         """
 
         try:
-            execute_query(query, (sync_time,), fetch=False)
+            sync_time_str = sync_time.strftime('%Y-%m-%d %H:%M:%S')
+            execute_query(query, (sync_time_str,), fetch=False)
         except Exception as e:
             logger.error(f"Failed to log sync start: {e}")
 
@@ -250,27 +232,33 @@ class SyncManager:
         query = """
         UPDATE sync_log
         SET
-            sync_completed = %s,
-            status = %s,
-            jobs_fetched = %s,
-            jobs_updated = %s,
-            jobs_created = %s,
-            errors = %s,
-            sync_duration_seconds = %s
-        WHERE sync_started = %s
+            sync_completed = ?,
+            status = ?,
+            jobs_fetched = ?,
+            jobs_updated = ?,
+            jobs_created = ?,
+            errors = ?,
+            sync_duration_seconds = ?
+        WHERE sync_started = ?
         """
 
         error_text = '\n'.join(stats.get("errors", [])) if stats.get("errors") else None
 
+        completed = stats.get("completed")
+        completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
+
+        started = stats.get("started")
+        started_str = started.strftime('%Y-%m-%d %H:%M:%S') if started else None
+
         params = (
-            stats.get("completed"),
+            completed_str,
             stats.get("status"),
             stats.get("jobs_fetched", 0),
             stats.get("jobs_updated", 0),
             stats.get("jobs_created", 0),
             error_text,
             stats.get("duration_seconds"),
-            stats.get("started")
+            started_str
         )
 
         try:

@@ -1,15 +1,18 @@
 """
 Database connection management for EU Parts Job Dashboard.
-Handles PostgreSQL connections using connection pooling.
+Handles SQLite connections for local/cloud deployment.
 """
 
 import streamlit as st
-import psycopg2
-from psycopg2 import pool
+import sqlite3
+import os
 from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Default database path
+DEFAULT_DB_PATH = "data/jobs.db"
 
 
 class DatabaseNotConfiguredError(Exception):
@@ -17,120 +20,124 @@ class DatabaseNotConfiguredError(Exception):
     pass
 
 
-def is_database_configured() -> bool:
-    """Check if database secrets are configured."""
+def get_database_path() -> str:
+    """Get the database file path from secrets or use default."""
     try:
-        db_config = st.secrets.get("database", {})
-        required_keys = ["host", "port", "database", "user", "password"]
-        return all(key in db_config for key in required_keys)
+        return st.secrets.get("database", {}).get("path", DEFAULT_DB_PATH)
     except Exception:
+        return DEFAULT_DB_PATH
+
+
+def is_database_configured() -> bool:
+    """
+    Check if database is configured and accessible.
+    For SQLite, we check if the database file exists or can be created.
+    """
+    try:
+        db_path = get_database_path()
+        # Check if database file exists
+        if os.path.exists(db_path):
+            return True
+        # Check if we can create the directory
+        db_dir = os.path.dirname(db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+        return True
+    except Exception as e:
+        logger.error(f"Database configuration check failed: {e}")
         return False
 
 
-class DatabaseConnection:
-    """Manages database connection pool for the application."""
-
-    _connection_pool: Optional[pool.SimpleConnectionPool] = None
-    _initialization_failed: bool = False
-
-    @classmethod
-    def initialize_pool(cls, min_connections: int = 1, max_connections: int = 10):
-        """
-        Initialize the database connection pool.
-
-        Args:
-            min_connections: Minimum number of connections in the pool
-            max_connections: Maximum number of connections in the pool
-        """
-        if cls._connection_pool is not None:
-            logger.warning("Connection pool already initialized")
-            return
-
-        if cls._initialization_failed:
-            raise DatabaseNotConfiguredError("Database initialization previously failed")
-
-        if not is_database_configured():
-            cls._initialization_failed = True
-            raise DatabaseNotConfiguredError(
-                "Database secrets not configured. Please add database configuration to .streamlit/secrets.toml"
-            )
-
-        try:
-            db_config = st.secrets["database"]
-
-            cls._connection_pool = psycopg2.pool.SimpleConnectionPool(
-                min_connections,
-                max_connections,
-                host=db_config["host"],
-                port=db_config["port"],
-                database=db_config["database"],
-                user=db_config["user"],
-                password=db_config["password"],
-                connect_timeout=10  # Add connection timeout
-            )
-            logger.info("Database connection pool initialized successfully")
-
-        except DatabaseNotConfiguredError:
-            raise
-        except Exception as e:
-            cls._initialization_failed = True
-            logger.error(f"Failed to initialize connection pool: {e}")
-            raise
-
-    @classmethod
-    def get_connection(cls):
-        """
-        Get a connection from the pool.
-
-        Returns:
-            A database connection from the pool
-        """
-        if cls._connection_pool is None:
-            cls.initialize_pool()
-
-        try:
-            return cls._connection_pool.getconn()
-        except Exception as e:
-            logger.error(f"Failed to get connection from pool: {e}")
-            raise
-
-    @classmethod
-    def return_connection(cls, connection):
-        """
-        Return a connection to the pool.
-
-        Args:
-            connection: The connection to return to the pool
-        """
-        if cls._connection_pool is not None and connection is not None:
-            cls._connection_pool.putconn(connection)
-
-    @classmethod
-    def close_all_connections(cls):
-        """Close all connections in the pool."""
-        if cls._connection_pool is not None:
-            cls._connection_pool.closeall()
-            cls._connection_pool = None
-            logger.info("All database connections closed")
-
-
-def get_db_connection():
+def get_connection() -> sqlite3.Connection:
     """
-    Get database connection class for managing connections.
-    Note: Not cached to allow proper error recovery.
+    Get a SQLite database connection.
 
     Returns:
-        DatabaseConnection class for managing connections
-
-    Raises:
-        DatabaseNotConfiguredError: If database is not configured
+        SQLite connection object
     """
-    if not is_database_configured():
-        raise DatabaseNotConfiguredError(
-            "Database secrets not configured. Please add database configuration to Streamlit secrets."
+    db_path = get_database_path()
+
+    # Ensure directory exists
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {e}")
+        raise DatabaseNotConfiguredError(f"Failed to connect to database: {e}")
+
+
+def init_database():
+    """Initialize the database schema if it doesn't exist."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Create jobs table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_uid TEXT UNIQUE NOT NULL,
+            job_number TEXT,
+            title TEXT,
+            description TEXT,
+            job_status TEXT,
+            job_category TEXT,
+            priority TEXT,
+            customer_name TEXT,
+            customer_uid TEXT,
+            job_address TEXT,
+            latitude REAL,
+            longitude REAL,
+            assigned_technician TEXT,
+            technician_uid TEXT,
+            scheduled_start_time TEXT,
+            scheduled_end_time TEXT,
+            actual_start_time TEXT,
+            actual_end_time TEXT,
+            created_time TEXT,
+            modified_time TEXT,
+            parts_status TEXT,
+            parts_delivered_date TEXT,
+            custom_fields TEXT,
+            tags TEXT,
+            last_synced TEXT DEFAULT CURRENT_TIMESTAMP
         )
-    DatabaseConnection.initialize_pool()
-    return DatabaseConnection
+        """)
+
+        # Create sync_log table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sync_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sync_started TEXT,
+            sync_completed TEXT,
+            status TEXT,
+            jobs_fetched INTEGER DEFAULT 0,
+            jobs_updated INTEGER DEFAULT 0,
+            jobs_created INTEGER DEFAULT 0,
+            errors TEXT,
+            sync_duration_seconds REAL
+        )
+        """)
+
+        # Create indexes for common queries
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_number ON jobs(job_number)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_status ON jobs(job_status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_category ON jobs(job_category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_scheduled_start ON jobs(scheduled_start_time)")
+
+        conn.commit()
+        logger.info("Database schema initialized successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize database schema: {e}")
+        raise
+    finally:
+        conn.close()
 
 
 def execute_query(query: str, params: tuple = None, fetch: bool = True):
@@ -145,12 +152,14 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
     Returns:
         Query results if fetch=True, otherwise None
     """
-    db = get_db_connection()
+    # Convert PostgreSQL-style placeholders (%s) to SQLite-style (?)
+    query = query.replace('%s', '?')
+
     conn = None
     cursor = None
 
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         cursor = conn.cursor()
 
         if params:
@@ -160,8 +169,10 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
 
         if fetch:
             results = cursor.fetchall()
-            column_names = [desc[0] for desc in cursor.description]
+            column_names = [description[0] for description in cursor.description] if cursor.description else []
             conn.commit()
+            # Convert Row objects to tuples for compatibility
+            results = [tuple(row) for row in results]
             return results, column_names
         else:
             conn.commit()
@@ -177,7 +188,7 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
         if cursor:
             cursor.close()
         if conn:
-            db.return_connection(conn)
+            conn.close()
 
 
 def execute_many(query: str, data: list):
@@ -191,12 +202,14 @@ def execute_many(query: str, data: list):
     Returns:
         Number of rows affected
     """
-    db = get_db_connection()
+    # Convert PostgreSQL-style placeholders (%s) to SQLite-style (?)
+    query = query.replace('%s', '?')
+
     conn = None
     cursor = None
 
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         cursor = conn.cursor()
 
         cursor.executemany(query, data)
@@ -215,4 +228,23 @@ def execute_many(query: str, data: list):
         if cursor:
             cursor.close()
         if conn:
-            db.return_connection(conn)
+            conn.close()
+
+
+# Legacy compatibility - kept for backward compatibility with existing code
+def get_db_connection():
+    """
+    Legacy function for backward compatibility.
+    Returns a module-like object with get_connection method.
+    """
+    class DBConnectionWrapper:
+        @staticmethod
+        def get_connection():
+            return get_connection()
+
+        @staticmethod
+        def return_connection(conn):
+            if conn:
+                conn.close()
+
+    return DBConnectionWrapper()

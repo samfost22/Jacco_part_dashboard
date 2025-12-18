@@ -345,10 +345,10 @@ class JobQueries:
             AND latitude BETWEEN 35 AND 72
             AND longitude BETWEEN -11 AND 40
             AND (
-                job_number ILIKE %s
-                OR title ILIKE %s
-                OR customer_name ILIKE %s
-                OR job_address ILIKE %s
+                LOWER(job_number) LIKE LOWER(%s)
+                OR LOWER(title) LIKE LOWER(%s)
+                OR LOWER(customer_name) LIKE LOWER(%s)
+                OR LOWER(job_address) LIKE LOWER(%s)
             )
         ORDER BY scheduled_start_time DESC
         """

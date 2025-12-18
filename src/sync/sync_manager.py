@@ -105,7 +105,8 @@ class SyncManager:
         Returns:
             "created" or "updated" depending on operation
         """
-        job_uid = job_data.get("jobUid")
+        # Zuper API uses snake_case field names
+        job_uid = job_data.get("job_uid") or job_data.get("jobUid")
 
         # Check if job exists
         check_query = "SELECT job_uid FROM jobs WHERE job_uid = ?"
@@ -152,31 +153,68 @@ class SyncManager:
         if isinstance(tags, list):
             tags = json.dumps(tags)
 
-        # Extract and prepare job data
+        # Extract location data - Zuper uses nested structure
+        location = job_data.get("customer_address", {}) or {}
+        geo = location.get("geo_cordinates", {}) or {}
+        lat = geo.get("latitude") or job_data.get("latitude")
+        lon = geo.get("longitude") or job_data.get("longitude")
+
+        # Get job category name from nested object
+        job_category = job_data.get("job_category", {})
+        if isinstance(job_category, dict):
+            job_category = job_category.get("name") or job_category.get("category_name")
+
+        # Get job status from job_status object
+        job_status = job_data.get("job_status", {})
+        if isinstance(job_status, dict):
+            job_status = job_status.get("name") or job_status.get("status_name")
+
+        # Get customer info
+        customer = job_data.get("customer", {}) or {}
+        customer_name = customer.get("name") or job_data.get("customer_name")
+        customer_uid = customer.get("customer_uid") or job_data.get("customer_uid")
+
+        # Get address string
+        job_address = location.get("street") or job_data.get("job_address")
+        if isinstance(location, dict) and location:
+            addr_parts = [location.get("street"), location.get("city"), location.get("state"), location.get("zipcode")]
+            job_address = ", ".join([p for p in addr_parts if p])
+
+        # Get assigned user info
+        assigned_to = job_data.get("assigned_to", []) or []
+        assigned_technician = None
+        technician_uid = None
+        if assigned_to and isinstance(assigned_to, list) and len(assigned_to) > 0:
+            first_tech = assigned_to[0]
+            if isinstance(first_tech, dict):
+                assigned_technician = first_tech.get("name") or first_tech.get("full_name")
+                technician_uid = first_tech.get("user_uid")
+
+        # Extract and prepare job data (Zuper uses snake_case)
         params = (
             job_uid,
-            job_data.get("jobNumber"),
-            job_data.get("title"),
-            job_data.get("description"),
-            job_data.get("jobStatus"),  # Use job_status, not current_stage
-            job_data.get("jobCategory"),
+            job_data.get("job_no") or job_data.get("job_number") or job_data.get("jobNumber"),
+            job_data.get("job_title") or job_data.get("title"),
+            job_data.get("job_description") or job_data.get("description"),
+            job_status,
+            job_category,
             job_data.get("priority"),
-            job_data.get("customerName"),
-            job_data.get("customerUid"),
-            job_data.get("jobAddress"),
-            job_data.get("latitude"),
-            job_data.get("longitude"),
-            job_data.get("assignedTechnician"),
-            job_data.get("technicianUid"),
-            self._format_datetime(job_data.get("scheduledStartTime")),
-            self._format_datetime(job_data.get("scheduledEndTime")),
-            self._format_datetime(job_data.get("actualStartTime")),
-            self._format_datetime(job_data.get("actualEndTime")),
-            self._format_datetime(job_data.get("createdTime")),
-            self._format_datetime(job_data.get("modifiedTime")),
-            job_data.get("partsStatus"),
-            self._format_datetime(job_data.get("partsDeliveredDate")),
-            json.dumps(job_data.get("customFields", {})),
+            customer_name,
+            customer_uid,
+            job_address,
+            lat,
+            lon,
+            assigned_technician,
+            technician_uid,
+            self._format_datetime(job_data.get("scheduled_start_time") or job_data.get("scheduledStartTime")),
+            self._format_datetime(job_data.get("scheduled_end_time") or job_data.get("scheduledEndTime")),
+            self._format_datetime(job_data.get("actual_start_time") or job_data.get("actualStartTime")),
+            self._format_datetime(job_data.get("actual_end_time") or job_data.get("actualEndTime")),
+            self._format_datetime(job_data.get("created_at") or job_data.get("createdTime")),
+            self._format_datetime(job_data.get("updated_at") or job_data.get("modifiedTime")),
+            job_data.get("parts_status") or job_data.get("partsStatus"),
+            self._format_datetime(job_data.get("parts_delivered_date") or job_data.get("partsDeliveredDate")),
+            json.dumps(job_data.get("custom_fields", {}) or job_data.get("customFields", {})),
             tags
         )
 

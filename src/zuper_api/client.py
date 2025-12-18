@@ -62,7 +62,14 @@ class ZuperAPIClient:
 
         zuper_config = st.secrets.get("zuper", {})
         self.api_key = api_key or zuper_config.get("api_key")
-        self.base_url = base_url or zuper_config.get("base_url")
+        base_url = base_url or zuper_config.get("base_url")
+
+        # Ensure base_url ends with /api (no /v1 needed for Zuper API)
+        if base_url:
+            base_url = base_url.rstrip('/')
+            if not base_url.endswith('/api'):
+                base_url = base_url + '/api'
+        self.base_url = base_url
 
         self.headers = {
             "x-api-key": self.api_key,
@@ -123,6 +130,9 @@ class ZuperAPIClient:
         url = f"{self.base_url}/{endpoint}"
         self._handle_rate_limit()
 
+        logger.info(f"API Request: {method} {url}")
+        logger.info(f"Params: {params}")
+
         for attempt in range(retry_count):
             try:
                 response = self.session.request(
@@ -133,9 +143,13 @@ class ZuperAPIClient:
                     timeout=30
                 )
 
+                logger.info(f"Response status: {response.status_code}")
+
                 # Handle different HTTP status codes
                 if response.status_code == 200:
-                    return response.json()
+                    json_response = response.json()
+                    logger.info(f"Response type: {json_response.get('type', 'unknown')}")
+                    return json_response
 
                 elif response.status_code == 401:
                     raise ZuperAuthenticationError("Invalid API key or authentication failed")
@@ -243,30 +257,43 @@ class ZuperAPIClient:
         page = 1
         page_size = 100
 
-        # Filter for "Field Requires Parts" category
-        filters = {
-            "jobCategory": "Field Requires Parts"
-        }
-
-        logger.info("Starting to fetch all Field Requires Parts jobs")
+        logger.info("Starting to fetch all jobs from Zuper API")
 
         while True:
             try:
-                response = self.get_jobs(page=page, page_size=page_size, filters=filters)
+                # First fetch all jobs, then filter by category client-side
+                response = self.get_jobs(page=page, page_size=page_size, filters=None)
 
+                # Handle Zuper API response format - jobs are in 'data' array
                 jobs = response.get("data", [])
+
+                # Log response structure for debugging
+                logger.info(f"Response keys: {list(response.keys())}")
+                if jobs and len(jobs) > 0:
+                    logger.info(f"Sample job keys: {list(jobs[0].keys()) if isinstance(jobs[0], dict) else 'not a dict'}")
+
                 if not jobs:
+                    logger.info("No jobs in response")
                     break
 
-                all_jobs.extend(jobs)
+                # Filter for "Field Requires Parts" category
+                for job in jobs:
+                    job_category = job.get("job_category", {})
+                    if isinstance(job_category, dict):
+                        category_name = job_category.get("name") or job_category.get("category_name", "")
+                    else:
+                        category_name = str(job_category) if job_category else ""
 
-                # Check if there are more pages
-                pagination = response.get("pagination", {})
-                total_pages = pagination.get("totalPages", 1)
+                    if "Field Requires Parts" in category_name or "Parts" in category_name:
+                        all_jobs.append(job)
 
-                logger.info(f"Fetched page {page}/{total_pages}, got {len(jobs)} jobs")
+                # Check if there are more pages - Zuper uses total_count
+                total_count = response.get("total_count", len(jobs))
+                total_pages = (total_count + page_size - 1) // page_size if total_count else 1
 
-                if page >= total_pages:
+                logger.info(f"Fetched page {page}/{total_pages}, got {len(jobs)} jobs (total: {total_count}), matched {len(all_jobs)} parts jobs so far")
+
+                if len(jobs) < page_size or page >= total_pages:
                     break
 
                 page += 1
@@ -294,13 +321,37 @@ class ZuperAPIClient:
         # Filter by EU geographic bounds
         eu_jobs = []
         for job in all_parts_jobs:
-            lat = job.get("latitude")
-            lon = job.get("longitude")
+            # Handle different possible field names for location
+            # Zuper uses customer_address.geo_cordinates or job_location
+            location = job.get("customer_address", {}) or {}
+            geo = location.get("geo_cordinates", {}) or {}
+
+            lat = geo.get("latitude") or job.get("latitude")
+            lon = geo.get("longitude") or job.get("longitude")
+
+            # Also check job_location
+            job_location = job.get("job_location", {}) or {}
+            if not lat:
+                lat = job_location.get("latitude")
+            if not lon:
+                lon = job_location.get("longitude")
+
+            # Convert to float if string
+            try:
+                if lat is not None:
+                    lat = float(lat)
+                if lon is not None:
+                    lon = float(lon)
+            except (ValueError, TypeError):
+                lat, lon = None, None
 
             if lat is not None and lon is not None:
                 # Check if within EU bounds
                 if 35 <= lat <= 72 and -11 <= lon <= 40:
                     eu_jobs.append(job)
+            else:
+                # Include jobs without coordinates (can't filter by location)
+                logger.debug(f"Job {job.get('job_uid', 'unknown')} has no location data")
 
         logger.info(f"Filtered to {len(eu_jobs)} EU parts jobs from {len(all_parts_jobs)} total")
 

@@ -23,6 +23,21 @@ from src.zuper_api.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+class ZuperAPINotConfiguredError(Exception):
+    """Raised when Zuper API configuration is missing."""
+    pass
+
+
+def is_zuper_configured() -> bool:
+    """Check if Zuper API secrets are configured."""
+    try:
+        zuper_config = st.secrets.get("zuper", {})
+        required_keys = ["api_key", "org_uid", "base_url"]
+        return all(key in zuper_config for key in required_keys)
+    except Exception:
+        return False
+
+
 class ZuperAPIClient:
     """
     Client for interacting with Zuper API.
@@ -37,10 +52,19 @@ class ZuperAPIClient:
             api_key: Zuper API key (from secrets if not provided)
             org_uid: Organization UID (from secrets if not provided)
             base_url: Base API URL (from secrets if not provided)
+
+        Raises:
+            ZuperAPINotConfiguredError: If API secrets are not configured
         """
-        self.api_key = api_key or st.secrets["zuper"]["api_key"]
-        self.org_uid = org_uid or st.secrets["zuper"]["org_uid"]
-        self.base_url = base_url or st.secrets["zuper"]["base_url"]
+        if not api_key and not is_zuper_configured():
+            raise ZuperAPINotConfiguredError(
+                "Zuper API secrets not configured. Please add zuper configuration to Streamlit secrets."
+            )
+
+        zuper_config = st.secrets.get("zuper", {})
+        self.api_key = api_key or zuper_config.get("api_key")
+        self.org_uid = org_uid or zuper_config.get("org_uid")
+        self.base_url = base_url or zuper_config.get("base_url")
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -301,12 +325,19 @@ class ZuperAPIClient:
             return False
 
 
-@st.cache_resource
 def get_zuper_client() -> ZuperAPIClient:
     """
-    Get cached Zuper API client instance.
+    Get Zuper API client instance.
+    Note: Not cached to allow proper error recovery.
 
     Returns:
         ZuperAPIClient instance
+
+    Raises:
+        ZuperAPINotConfiguredError: If API is not configured
     """
+    if not is_zuper_configured():
+        raise ZuperAPINotConfiguredError(
+            "Zuper API secrets not configured. Please add zuper configuration to Streamlit secrets."
+        )
     return ZuperAPIClient()

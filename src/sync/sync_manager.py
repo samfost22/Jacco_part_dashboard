@@ -1,6 +1,6 @@
 """
 Sync Manager for synchronizing Zuper API data with local database.
-Handles periodic data synchronization in the background.
+Handles data synchronization from Zuper to SQLite database.
 """
 
 import logging
@@ -9,7 +9,7 @@ from typing import Dict, List, Any, Optional
 import json
 
 from src.zuper_api.client import ZuperAPIClient
-from database.connection import execute_query, execute_many
+from database.connection import execute_query, get_db_connection
 from src.zuper_api.exceptions import ZuperAPIError
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ class SyncManager:
 
     def _upsert_job(self, job_data: Dict[str, Any]) -> str:
         """
-        Insert or update a job in the database.
+        Insert or update a job in the database using SQLite upsert.
 
         Args:
             job_data: Job data from Zuper API
@@ -107,12 +107,12 @@ class SyncManager:
         """
         job_uid = job_data.get("jobUid")
 
-        # First check if job exists
-        check_query = "SELECT 1 FROM jobs WHERE job_uid = ?"
-        results, _ = execute_query(check_query, (job_uid,), fetch=True)
-        exists = len(results) > 0
+        # Check if job exists
+        check_query = "SELECT job_uid FROM jobs WHERE job_uid = ?"
+        result, _ = execute_query(check_query, (job_uid,))
+        job_exists = bool(result)
 
-        # Use INSERT OR REPLACE for SQLite
+        # SQLite INSERT OR REPLACE syntax
         query = """
         INSERT OR REPLACE INTO jobs (
             job_uid,
@@ -147,6 +147,11 @@ class SyncManager:
         )
         """
 
+        # Convert tags list to JSON string for SQLite
+        tags = job_data.get("tags", [])
+        if isinstance(tags, list):
+            tags = json.dumps(tags)
+
         # Extract and prepare job data
         params = (
             job_uid,
@@ -172,12 +177,12 @@ class SyncManager:
             job_data.get("partsStatus"),
             self._format_datetime(job_data.get("partsDeliveredDate")),
             json.dumps(job_data.get("customFields", {})),
-            json.dumps(job_data.get("tags", []))
+            tags
         )
 
         execute_query(query, params, fetch=False)
 
-        return "updated" if exists else "created"
+        return "updated" if job_exists else "created"
 
     def _format_datetime(self, dt_string: Optional[str]) -> Optional[str]:
         """
@@ -187,7 +192,7 @@ class SyncManager:
             dt_string: Datetime string in ISO format
 
         Returns:
-            Formatted datetime string or None
+            ISO format datetime string or None
         """
         if not dt_string:
             return None
@@ -217,8 +222,7 @@ class SyncManager:
         """
 
         try:
-            sync_time_str = sync_time.strftime('%Y-%m-%d %H:%M:%S')
-            execute_query(query, (sync_time_str,), fetch=False)
+            execute_query(query, (sync_time.strftime('%Y-%m-%d %H:%M:%S'),), fetch=False)
         except Exception as e:
             logger.error(f"Failed to log sync start: {e}")
 
@@ -237,12 +241,14 @@ class SyncManager:
             jobs_fetched = ?,
             jobs_updated = ?,
             jobs_created = ?,
-            errors = ?,
-            sync_duration_seconds = ?
+            errors = ?
         WHERE sync_started = ?
         """
 
         error_text = '\n'.join(stats.get("errors", [])) if stats.get("errors") else None
+        completed = stats.get("completed")
+        completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
+        started_str = stats.get("started").strftime('%Y-%m-%d %H:%M:%S') if stats.get("started") else None
 
         completed = stats.get("completed")
         completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
@@ -257,7 +263,6 @@ class SyncManager:
             stats.get("jobs_updated", 0),
             stats.get("jobs_created", 0),
             error_text,
-            stats.get("duration_seconds"),
             started_str
         )
 
@@ -281,8 +286,7 @@ class SyncManager:
             jobs_fetched,
             jobs_updated,
             jobs_created,
-            errors,
-            sync_duration_seconds
+            errors
         FROM sync_log
         ORDER BY sync_started DESC
         LIMIT 1

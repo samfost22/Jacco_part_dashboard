@@ -1,6 +1,7 @@
 """
 Database queries for EU Parts Job Dashboard.
 All queries are view-only (SELECT statements).
+Uses SQLite syntax with ? placeholders.
 """
 
 import logging
@@ -80,7 +81,7 @@ class JobQueries:
         if not statuses:
             return pd.DataFrame()
 
-        placeholders = ','.join(['%s'] * len(statuses))
+        placeholders = ','.join(['?'] * len(statuses))
         query = f"""
         SELECT
             job_uid,
@@ -165,7 +166,7 @@ class JobQueries:
             last_synced
         FROM jobs
         WHERE
-            job_number = %s
+            job_number = ?
             AND job_category = 'Field Requires Parts'
             AND latitude BETWEEN 35 AND 72
             AND longitude BETWEEN -11 AND 40
@@ -178,6 +179,57 @@ class JobQueries:
             return None
         except Exception as e:
             logger.error(f"Error fetching job by number: {e}")
+            return None
+
+    @staticmethod
+    def get_job_by_uid(job_uid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific job by job UID.
+
+        Args:
+            job_uid: The job UID to search for
+
+        Returns:
+            Dictionary with job data or None if not found
+        """
+        query = """
+        SELECT
+            job_uid,
+            job_number,
+            title,
+            description,
+            job_status,
+            job_category,
+            priority,
+            customer_name,
+            customer_uid,
+            job_address,
+            latitude,
+            longitude,
+            assigned_technician,
+            technician_uid,
+            scheduled_start_time,
+            scheduled_end_time,
+            actual_start_time,
+            actual_end_time,
+            created_time,
+            modified_time,
+            parts_status,
+            parts_delivered_date,
+            custom_fields,
+            tags,
+            last_synced
+        FROM jobs
+        WHERE job_uid = ?
+        """
+
+        try:
+            results, columns = execute_query(query, (job_uid,))
+            if results:
+                return dict(zip(columns, results[0]))
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching job by UID: {e}")
             return None
 
     @staticmethod
@@ -194,7 +246,7 @@ class JobQueries:
         if not job_numbers:
             return pd.DataFrame()
 
-        placeholders = ','.join(['%s'] * len(job_numbers))
+        placeholders = ','.join(['?'] * len(job_numbers))
         query = f"""
         SELECT
             job_uid,
@@ -345,10 +397,10 @@ class JobQueries:
             AND latitude BETWEEN 35 AND 72
             AND longitude BETWEEN -11 AND 40
             AND (
-                LOWER(job_number) LIKE LOWER(%s)
-                OR LOWER(title) LIKE LOWER(%s)
-                OR LOWER(customer_name) LIKE LOWER(%s)
-                OR LOWER(job_address) LIKE LOWER(%s)
+                job_number LIKE ?
+                OR title LIKE ?
+                OR customer_name LIKE ?
+                OR job_address LIKE ?
             )
         ORDER BY scheduled_start_time DESC
         """

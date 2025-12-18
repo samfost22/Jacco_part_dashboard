@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Import components and utilities
 from database.queries import JobQueries
 from database.connection import is_database_configured, DatabaseNotConfiguredError
-from components.job_card import render_job_card, render_job_list, render_job_metrics
+from components.job_card import render_job_card, render_job_list
 from components.bulk_lookup import render_bulk_lookup
 from components.parts_inventory import render_parts_inventory
 from src.zuper_api.client import get_zuper_client, is_zuper_configured, ZuperAPINotConfiguredError
@@ -40,17 +40,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for status tiles
+st.markdown("""
+<style>
+.status-tile {
+    padding: 15px 10px;
+    border-radius: 10px;
+    text-align: center;
+    margin: 5px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.status-tile:hover {
+    transform: scale(1.05);
+}
+.status-tile h3 {
+    margin: 0;
+    font-size: 14px;
+    color: white;
+}
+.status-tile p {
+    margin: 5px 0 0 0;
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+}
+.tile-all { background-color: #607D8B; }
+.tile-new-ticket { background-color: #3498db; }
+.tile-received-request { background-color: #9b59b6; }
+.tile-parts-on-order { background-color: #f39c12; }
+.tile-shop-pick-up { background-color: #27ae60; }
+.tile-shipped { background-color: #16a085; }
+.tile-parts-delivered { background-color: #2ecc71; }
+.tile-done { background-color: #2ecc71; }
+.tile-canceled { background-color: #95a5a6; }
+.tile-selected {
+    box-shadow: 0 0 0 3px #fff, 0 0 0 5px #333;
+    transform: scale(1.05);
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 def initialize_session_state():
     """Initialize session state variables."""
     if 'language' not in st.session_state:
         st.session_state.language = AppSettings.DEFAULT_LANGUAGE
-
     if 'selected_job' not in st.session_state:
         st.session_state.selected_job = None
-
     if 'last_sync' not in st.session_state:
         st.session_state.last_sync = None
+    if 'status_filter' not in st.session_state:
+        st.session_state.status_filter = "All"
 
 
 def render_sidebar():
@@ -103,12 +144,7 @@ def render_sidebar():
 
 
 def render_sync_info(lang: Language):
-    """
-    Render sync information in sidebar.
-
-    Args:
-        lang: Language instance for translations
-    """
+    """Render sync information in sidebar."""
     st.subheader(lang.get("last_sync"))
 
     if not is_zuper_configured():
@@ -116,7 +152,6 @@ def render_sync_info(lang: Language):
         return
 
     try:
-        # Only try to get sync info if API is configured
         api_client = get_zuper_client()
         sync_manager = SyncManager(api_client)
         last_sync = sync_manager.get_last_sync_info()
@@ -143,69 +178,58 @@ def render_sync_info(lang: Language):
         st.info("No sync data")
 
 
-def render_status_tiles(jobs_df: pd.DataFrame, lang: Language) -> str:
+def render_status_tiles(jobs_df: pd.DataFrame):
     """
-    Render status filter using radio buttons with counts.
-
-    Args:
-        jobs_df: DataFrame with all jobs
-        lang: Language instance for translations
-
-    Returns:
-        Selected status filter
+    Render clickable status tiles for filtering.
+    Returns the selected status.
     """
     # Get status counts
     status_counts = jobs_df['job_status'].value_counts().to_dict()
     total_jobs = len(jobs_df)
 
-    # Define the status order (matching Zuper workflow)
-    status_order = [
-        "All",
-        "New Ticket",
-        "Received Request",
-        "Parts On Order",
-        "Shop Pick UP",
-        "Shipped",
-        "Parts delivered",
-        "Done",
-        "Canceled"
+    # Status configuration with colors
+    statuses = [
+        ("All", total_jobs, "tile-all"),
+        ("New Ticket", status_counts.get("New Ticket", 0), "tile-new-ticket"),
+        ("Received Request", status_counts.get("Received Request", 0), "tile-received-request"),
+        ("Parts On Order", status_counts.get("Parts On Order", 0), "tile-parts-on-order"),
+        ("Shop Pick UP", status_counts.get("Shop Pick UP", 0), "tile-shop-pick-up"),
+        ("Shipped", status_counts.get("Shipped", 0), "tile-shipped"),
+        ("Parts delivered", status_counts.get("Parts delivered", 0), "tile-parts-delivered"),
+        ("Done", status_counts.get("Done", 0), "tile-done"),
+        ("Canceled", status_counts.get("Canceled", 0), "tile-canceled"),
     ]
 
-    # Build options with counts
-    options_with_counts = []
-    for status in status_order:
-        if status == "All":
-            count = total_jobs
-        else:
-            count = status_counts.get(status, 0)
-        options_with_counts.append(f"{status} ({count})")
+    # Create columns for tiles
+    cols = st.columns(len(statuses))
 
-    # Use radio buttons for selection (more stable than multiple buttons)
-    selected_option = st.radio(
-        "Filter by Status",
-        options=options_with_counts,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    for idx, (status_name, count, css_class) in enumerate(statuses):
+        with cols[idx]:
+            # Check if this status is selected
+            is_selected = st.session_state.status_filter == status_name
+            selected_class = "tile-selected" if is_selected else ""
 
-    # Extract status name from selection (remove count)
-    selected_status = selected_option.rsplit(" (", 1)[0]
-    return selected_status
+            # Render tile as HTML
+            st.markdown(f"""
+                <div class="status-tile {css_class} {selected_class}">
+                    <h3>{status_name}</h3>
+                    <p>{count}</p>
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Button to select this status (hidden label)
+            if st.button("Select", key=f"tile_{status_name}", use_container_width=True):
+                st.session_state.status_filter = status_name
+                st.rerun()
 
 
 def render_dashboard_page(lang: Language):
-    """
-    Render main dashboard page.
-
-    Args:
-        lang: Language instance for translations
-    """
+    """Render main dashboard page."""
     st.title(lang.get("eu_parts_jobs"))
 
     # Load data
     try:
-        with st.spinner(lang.get("loading")):
-            jobs_df = JobQueries.get_all_eu_parts_jobs()
+        jobs_df = JobQueries.get_all_eu_parts_jobs()
     except Exception as e:
         logger.error(f"Error loading jobs: {e}")
         st.error(f"Failed to load data: {str(e)}")
@@ -217,16 +241,15 @@ def render_dashboard_page(lang: Language):
         st.info("Please run a data sync to populate the database.")
         return
 
-    # Display status filter tiles
-    st.subheader("Filter by Status")
-    selected_status = render_status_tiles(jobs_df, lang)
+    # Display status tiles
+    render_status_tiles(jobs_df)
 
     st.divider()
 
-    # Apply status filter based on selection
+    # Apply status filter
     filtered_df = jobs_df.copy()
-    if selected_status != "All":
-        filtered_df = filtered_df[filtered_df['job_status'] == selected_status]
+    if st.session_state.status_filter != "All":
+        filtered_df = filtered_df[filtered_df['job_status'] == st.session_state.status_filter]
 
     # Search box
     search_term = st.text_input(
@@ -235,32 +258,26 @@ def render_dashboard_page(lang: Language):
     )
 
     if search_term:
-        search_term_lower = search_term.lower()
+        search_lower = search_term.lower()
         filtered_df = filtered_df[
-            filtered_df['job_number'].str.lower().str.contains(search_term_lower, na=False) |
-            filtered_df['title'].str.lower().str.contains(search_term_lower, na=False) |
-            filtered_df['customer_name'].str.lower().str.contains(search_term_lower, na=False)
+            filtered_df['job_number'].str.lower().str.contains(search_lower, na=False) |
+            filtered_df['title'].str.lower().str.contains(search_lower, na=False) |
+            filtered_df['customer_name'].str.lower().str.contains(search_lower, na=False)
         ]
 
     st.divider()
 
-    # Display results count
+    # Results header
     st.subheader(f"Jobs ({len(filtered_df)} found)")
 
     if filtered_df.empty:
         st.info(lang.get("no_jobs_found"))
         return
 
-    # Display options
+    # View mode toggle
     col1, col2 = st.columns([3, 1])
-
     with col1:
-        view_mode = st.radio(
-            "View Mode",
-            ["Cards", "Table"],
-            horizontal=True
-        )
-
+        view_mode = st.radio("View Mode", ["Cards", "Table"], horizontal=True)
     with col2:
         if FeatureFlags.ENABLE_MAP_VIEW:
             show_map = st.checkbox(lang.get("show_map"))
@@ -271,157 +288,90 @@ def render_dashboard_page(lang: Language):
 
     st.divider()
 
-    # Data display
+    # Display jobs
     if view_mode == "Table":
         render_jobs_table(filtered_df, lang)
     else:
         render_job_list(filtered_df, max_items=20)
 
-    # Export option
+    # Export
     if FeatureFlags.ENABLE_EXPORT:
         st.divider()
         render_export_options(filtered_df, lang)
 
 
 def render_jobs_table(jobs_df: pd.DataFrame, lang: Language):
-    """
-    Render jobs as a table.
-
-    Args:
-        jobs_df: DataFrame with job data
-        lang: Language instance for translations
-    """
+    """Render jobs as a table."""
     display_columns = [
-        'job_number',
-        'title',
-        'job_status',
-        'customer_name',
-        'scheduled_start_time',
-        'priority',
-        'parts_status'
+        'job_number', 'title', 'job_status', 'customer_name',
+        'scheduled_start_time', 'priority', 'parts_status'
     ]
 
     display_df = jobs_df[display_columns].copy()
 
-    # Format datetime
     display_df['scheduled_start_time'] = display_df['scheduled_start_time'].apply(
         lambda x: format_datetime(x) if pd.notna(x) else 'N/A'
     )
-
-    # Format status
     display_df['job_status'] = display_df['job_status'].apply(
         lambda x: format_status(x) if pd.notna(x) else 'Unknown'
     )
 
-    # Rename columns
     display_df.columns = [
-        lang.get("job_number"),
-        lang.get("title"),
-        lang.get("status"),
-        lang.get("customer"),
-        lang.get("scheduled_start"),
-        lang.get("priority"),
-        lang.get("parts_status")
+        lang.get("job_number"), lang.get("title"), lang.get("status"),
+        lang.get("customer"), lang.get("scheduled_start"),
+        lang.get("priority"), lang.get("parts_status")
     ]
 
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
 def render_map_view(jobs_df: pd.DataFrame, lang: Language):
-    """
-    Render map view of jobs.
-
-    Args:
-        jobs_df: DataFrame with job data
-        lang: Language instance for translations
-    """
+    """Render map view of jobs."""
     st.subheader(lang.get("location"))
 
-    # Filter jobs with valid coordinates
     valid_coords = jobs_df[
-        jobs_df['latitude'].notna() &
-        jobs_df['longitude'].notna()
+        jobs_df['latitude'].notna() & jobs_df['longitude'].notna()
     ].copy()
 
     if valid_coords.empty:
-        st.info("No location data available for selected jobs")
+        st.info("No location data available")
         return
 
-    # Create map dataframe
     map_df = valid_coords[['latitude', 'longitude']].copy()
     map_df.columns = ['lat', 'lon']
-
-    # Display map
     st.map(map_df, zoom=4)
-
     st.caption(f"Showing {len(map_df)} jobs with location data")
 
 
 def render_job_lookup_page(lang: Language):
-    """
-    Render single job lookup page.
-
-    Args:
-        lang: Language instance for translations
-    """
+    """Render single job lookup page."""
     st.title(lang.get("job_lookup"))
+    st.markdown("Search for a specific job by job number.")
 
-    st.markdown("""
-    Search for a specific job by job number.
-    """)
-
-    # Job number input
-    job_number = st.text_input(
-        lang.get("enter_job_number"),
-        placeholder="JOB-001"
-    )
+    job_number = st.text_input(lang.get("enter_job_number"), placeholder="JOB-001")
 
     if st.button(lang.get("search"), type="primary"):
         if job_number:
-            search_single_job(job_number.strip(), lang)
+            job = JobQueries.get_job_by_number(job_number.strip())
+            if job:
+                st.success(f"Job found: {job_number}")
+                st.divider()
+                render_job_card(job, show_details=True)
+            else:
+                st.error(lang.get("job_not_found"))
         else:
             st.warning("Please enter a job number")
 
 
-def search_single_job(job_number: str, lang: Language):
-    """
-    Search for a single job and display results.
-
-    Args:
-        job_number: Job number to search for
-        lang: Language instance for translations
-    """
-    with st.spinner(lang.get("loading")):
-        job = JobQueries.get_job_by_number(job_number)
-
-        if job:
-            st.success(f"Job found: {job_number}")
-            st.divider()
-            render_job_card(job, show_details=True)
-        else:
-            st.error(lang.get("job_not_found"))
-
-
 def render_sync_page(lang: Language):
-    """
-    Render data sync page.
-
-    Args:
-        lang: Language instance for translations
-    """
+    """Render data sync page."""
     st.title(lang.get("sync"))
 
     if not is_zuper_configured():
         st.error("Zuper API not configured. Please add API credentials to secrets.")
         st.markdown("""
         ### Setup Required
-
         Add the following to your `.streamlit/secrets.toml`:
-
         ```toml
         [zuper]
         api_key = "your_zuper_api_key"
@@ -431,137 +381,86 @@ def render_sync_page(lang: Language):
         """)
         return
 
-    st.markdown("""
-    Synchronize job data from Zuper API to the local database.
-    This will fetch all EU parts jobs and update the database.
-    """)
-
-    st.warning("""
-    **Note:** Sync operations may take several minutes depending on the number of jobs.
-    """)
+    st.markdown("Synchronize job data from Zuper API to the local database.")
+    st.warning("**Note:** Sync may take several minutes depending on the number of jobs.")
 
     if st.button(lang.get("sync_now"), type="primary"):
-        run_sync(lang)
+        try:
+            with st.spinner("Synchronizing data..."):
+                api_client = get_zuper_client()
+                sync_manager = SyncManager(api_client)
+                stats = sync_manager.sync_all_jobs()
 
+                if stats['status'] == 'completed':
+                    st.success(lang.get("sync_success"))
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Jobs Fetched", stats['jobs_fetched'])
+                    col2.metric("Jobs Created", stats['jobs_created'])
+                    col3.metric("Jobs Updated", stats['jobs_updated'])
 
-def run_sync(lang: Language):
-    """
-    Run data synchronization.
-
-    Args:
-        lang: Language instance for translations
-    """
-    try:
-        with st.spinner("Synchronizing data..."):
-            # Initialize sync manager
-            api_client = get_zuper_client()
-            sync_manager = SyncManager(api_client)
-
-            # Run sync
-            stats = sync_manager.sync_all_jobs()
-
-            # Display results
-            if stats['status'] == 'completed':
-                st.success(lang.get("sync_success"))
-
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.metric("Jobs Fetched", stats['jobs_fetched'])
-
-                with col2:
-                    st.metric("Jobs Created", stats['jobs_created'])
-
-                with col3:
-                    st.metric("Jobs Updated", stats['jobs_updated'])
-
-                if stats.get('errors'):
-                    st.warning(f"{len(stats['errors'])} errors occurred during sync")
-                    with st.expander("View Errors"):
+                    if stats.get('errors'):
+                        st.warning(f"{len(stats['errors'])} errors occurred")
+                        with st.expander("View Errors"):
+                            for error in stats['errors']:
+                                st.write(f"- {error}")
+                else:
+                    st.error(lang.get("sync_failed"))
+                    if stats.get('errors'):
                         for error in stats['errors']:
                             st.write(f"- {error}")
 
-                # Update session state
-                st.session_state.last_sync = stats['completed']
-
-            else:
-                st.error(lang.get("sync_failed"))
-
-                if stats.get('errors'):
-                    st.error("Errors:")
-                    for error in stats['errors']:
-                        st.write(f"- {error}")
-
-    except Exception as e:
-        logger.error(f"Sync failed: {e}")
-        st.error(f"Sync failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Sync failed: {e}")
+            st.error(f"Sync failed: {str(e)}")
 
 
 def render_export_options(jobs_df: pd.DataFrame, lang: Language):
-    """
-    Render export options.
-
-    Args:
-        jobs_df: DataFrame with job data
-        lang: Language instance for translations
-    """
+    """Render export options."""
     st.subheader(lang.get("export"))
-
     col1, col2 = st.columns(2)
 
     with col1:
         csv = jobs_df.to_csv(index=False)
         st.download_button(
-            label="Download as CSV",
-            data=csv,
-            file_name=f"eu_parts_jobs_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
+            "Download as CSV", csv,
+            f"eu_parts_jobs_{datetime.now().strftime('%Y%m%d')}.csv",
+            "text/csv"
         )
 
     with col2:
         json_str = jobs_df.to_json(orient='records', date_format='iso', indent=2)
         st.download_button(
-            label="Download as JSON",
-            data=json_str,
-            file_name=f"eu_parts_jobs_{datetime.now().strftime('%Y%m%d')}.json",
-            mime="application/json"
+            "Download as JSON", json_str,
+            f"eu_parts_jobs_{datetime.now().strftime('%Y%m%d')}.json",
+            "application/json"
         )
 
 
 def main():
     """Main application entry point."""
-    # Initialize session state
     initialize_session_state()
-
-    # Render sidebar and get selected page
     selected_page, lang = render_sidebar()
 
-    # Render selected page
     if selected_page == "dashboard":
         render_dashboard_page(lang)
-
     elif selected_page == "job_lookup":
         render_job_lookup_page(lang)
-
     elif selected_page == "bulk_lookup":
         if FeatureFlags.ENABLE_BULK_LOOKUP:
             render_bulk_lookup(lang)
         else:
             st.warning("Bulk lookup is currently disabled")
-
     elif selected_page == "parts_inventory":
         if FeatureFlags.ENABLE_PARTS_INVENTORY:
             render_parts_inventory(lang)
         else:
             st.warning("Parts inventory is currently disabled")
-
     elif selected_page == "sync":
         if FeatureFlags.ENABLE_MANUAL_SYNC:
             render_sync_page(lang)
         else:
             st.warning("Manual sync is currently disabled")
 
-    # Footer
     st.divider()
     st.caption(f"EU Parts Job Dashboard | Last updated: {format_datetime(datetime.now())}")
 

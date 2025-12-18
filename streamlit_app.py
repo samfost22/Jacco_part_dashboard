@@ -31,6 +31,13 @@ from utils.formatters import format_datetime, format_status, status_badge
 from utils.gps_helpers import format_map_data, get_center_point
 from config.settings import AppSettings, FeatureFlags
 
+# Initialize database on startup
+try:
+    init_database()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.warning(f"Database initialization skipped: {e}")
+
 
 # Page configuration
 st.set_page_config(
@@ -238,7 +245,10 @@ def render_dashboard_page(lang: Language):
 
     if jobs_df.empty:
         st.warning(lang.get("no_jobs_found"))
-        st.info("Please run a data sync to populate the database.")
+        if is_zuper_configured():
+            st.info("Please run a data sync to populate the database.")
+        else:
+            render_configuration_error()
         return
 
     # Display status tiles

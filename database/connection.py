@@ -127,6 +127,8 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True) -> Optio
             results = cursor.fetchall()
             column_names = [desc[0] for desc in cursor.description] if cursor.description else []
             conn.commit()
+            # Convert Row objects to tuples for compatibility
+            results = [tuple(row) for row in results]
             return results, column_names
         else:
             conn.commit()

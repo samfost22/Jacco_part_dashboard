@@ -158,7 +158,7 @@ class SyncManager:
             job_data.get("jobNumber"),
             job_data.get("title"),
             job_data.get("description"),
-            job_data.get("jobStatus"),  # Use job_status, not current_stage
+            job_data.get("jobStatus"),
             job_data.get("jobCategory"),
             job_data.get("priority"),
             job_data.get("customerName"),
@@ -200,7 +200,6 @@ class SyncManager:
         try:
             # Handle ISO format with timezone
             if 'T' in dt_string:
-                # Remove timezone info if present and parse
                 dt_string = dt_string.replace('Z', '+00:00')
                 dt = datetime.fromisoformat(dt_string)
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -250,6 +249,12 @@ class SyncManager:
         completed = stats.get("completed")
         completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
         started_str = stats.get("started").strftime('%Y-%m-%d %H:%M:%S') if stats.get("started") else None
+
+        completed = stats.get("completed")
+        completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
+
+        started = stats.get("started")
+        started_str = started.strftime('%Y-%m-%d %H:%M:%S') if started else None
 
         params = (
             completed_str,

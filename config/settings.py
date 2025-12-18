@@ -37,15 +37,16 @@ class AppSettings:
     CITY_MAP_ZOOM = 13
     REGION_MAP_ZOOM = 8
 
-    # Status options (with correct capitalization)
+    # Status options (actual Zuper status names)
     JOB_STATUSES = [
-        "Scheduled",
-        "In Progress",
-        "Parts ordered",
-        "Parts delivered",  # lowercase 'd'
-        "Completed",
-        "Cancelled",
-        "On Hold"
+        "New Ticket",
+        "Received Request",
+        "Parts On Order",
+        "Shop Pick UP",
+        "Shipped",
+        "Parts delivered",  # lowercase 'd' - important!
+        "Done",
+        "Canceled"
     ]
 
     # Priority levels

@@ -52,6 +52,9 @@ def initialize_session_state():
     if 'last_sync' not in st.session_state:
         st.session_state.last_sync = None
 
+    if 'selected_status' not in st.session_state:
+        st.session_state.selected_status = "All"
+
 
 def render_sidebar():
     """Render sidebar with navigation and settings."""
@@ -111,11 +114,6 @@ def render_sync_info(lang: Language):
     """
     st.subheader(lang.get("last_sync"))
 
-    # Check if services are configured
-    if not is_database_configured():
-        st.info("Database not configured")
-        return
-
     if not is_zuper_configured():
         st.info("API not configured")
         return
@@ -147,36 +145,68 @@ def render_sync_info(lang: Language):
         st.warning("Unable to fetch sync information")
 
 
-def render_configuration_error():
-    """Render configuration error message with setup instructions."""
-    st.error("⚠️ Application Not Configured")
+def render_status_tiles(jobs_df: pd.DataFrame, lang: Language):
+    """
+    Render clickable status tiles for filtering.
 
-    st.markdown("""
-    ### Setup Required
+    Args:
+        jobs_df: DataFrame with all jobs
+        lang: Language instance for translations
+    """
+    # Get status counts
+    status_counts = jobs_df['job_status'].value_counts().to_dict()
+    total_jobs = len(jobs_df)
 
-    This application requires the following secrets to be configured:
+    # Define the status order (matching Zuper workflow)
+    status_order = [
+        "All",
+        "New Ticket",
+        "Received Request",
+        "Parts On Order",
+        "Shop Pick UP",
+        "Shipped",
+        "Parts delivered",
+        "Done",
+        "Canceled"
+    ]
 
-    **Database Configuration:**
-    ```toml
-    [database]
-    host = "your-database-host"
-    port = 5432
-    database = "your-database-name"
-    user = "your-username"
-    password = "your-password"
-    ```
+    # Create columns for status tiles
+    cols = st.columns(len(status_order))
 
-    **Zuper API Configuration:**
-    ```toml
-    [zuper]
-    api_key = "your-api-key"
-    org_uid = "your-organization-uid"
-    base_url = "https://api.zuper.co/api/v1"
-    ```
+    for idx, status in enumerate(status_order):
+        with cols[idx]:
+            if status == "All":
+                count = total_jobs
+                color = "#607D8B"  # Gray
+            else:
+                count = status_counts.get(status, 0)
+                # Get color from the status_badge colors
+                color_map = {
+                    "New Ticket": "#3498db",
+                    "Received Request": "#9b59b6",
+                    "Parts On Order": "#f39c12",
+                    "Shop Pick UP": "#27ae60",
+                    "Shipped": "#16a085",
+                    "Parts delivered": "#2ecc71",
+                    "Done": "#2ecc71",
+                    "Canceled": "#95a5a6"
+                }
+                color = color_map.get(status, "#607D8B")
 
-    For Streamlit Cloud, add these in the app settings under "Secrets".
-    For local development, create a `.streamlit/secrets.toml` file.
-    """)
+            # Determine if this tile is selected
+            is_selected = st.session_state.selected_status == status
+
+            # Create clickable tile using button
+            button_style = "primary" if is_selected else "secondary"
+
+            if st.button(
+                f"{status}\n({count})",
+                key=f"status_tile_{status}",
+                use_container_width=True,
+                type=button_style
+            ):
+                st.session_state.selected_status = status
+                st.rerun()
 
 
 def render_dashboard_page(lang: Language):
@@ -188,22 +218,14 @@ def render_dashboard_page(lang: Language):
     """
     st.title(lang.get("eu_parts_jobs"))
 
-    # Check if database is configured
-    if not is_database_configured():
-        render_configuration_error()
-        return
-
     # Load data
     try:
         with st.spinner(lang.get("loading")):
             jobs_df = JobQueries.get_all_eu_parts_jobs()
-    except DatabaseNotConfiguredError:
-        render_configuration_error()
-        return
     except Exception as e:
         logger.error(f"Error loading jobs: {e}")
         st.error(f"Failed to load data: {str(e)}")
-        st.info("Please check database connection and try again.")
+        st.info("Please run a data sync to populate the database.")
         return
 
     if jobs_df.empty:
@@ -211,49 +233,22 @@ def render_dashboard_page(lang: Language):
         st.info("Please run a data sync to populate the database.")
         return
 
-    # Display metrics
-    render_job_metrics(jobs_df)
+    # Display clickable status tiles
+    st.subheader("Filter by Status")
+    render_status_tiles(jobs_df, lang)
 
     st.divider()
 
-    # Filters
-    st.subheader(lang.get("filter"))
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        # Status filter
-        all_statuses = sorted(jobs_df['job_status'].dropna().unique().tolist())
-        selected_statuses = st.multiselect(
-            lang.get("status"),
-            options=all_statuses,
-            default=all_statuses
-        )
-
-    with col2:
-        # Priority filter
-        all_priorities = sorted(jobs_df['priority'].dropna().unique().tolist())
-        selected_priorities = st.multiselect(
-            lang.get("priority"),
-            options=all_priorities,
-            default=all_priorities
-        )
-
-    with col3:
-        # Search
-        search_term = st.text_input(
-            lang.get("search"),
-            placeholder=lang.get("enter_job_number")
-        )
-
-    # Apply filters
+    # Apply status filter based on selected tile
     filtered_df = jobs_df.copy()
+    if st.session_state.selected_status != "All":
+        filtered_df = filtered_df[filtered_df['job_status'] == st.session_state.selected_status]
 
-    if selected_statuses:
-        filtered_df = filtered_df[filtered_df['job_status'].isin(selected_statuses)]
-
-    if selected_priorities:
-        filtered_df = filtered_df[filtered_df['priority'].isin(selected_priorities)]
+    # Search box
+    search_term = st.text_input(
+        lang.get("search"),
+        placeholder=lang.get("enter_job_number")
+    )
 
     if search_term:
         search_term_lower = search_term.lower()
@@ -265,7 +260,7 @@ def render_dashboard_page(lang: Language):
 
     st.divider()
 
-    # Display results
+    # Display results count
     st.subheader(f"Jobs ({len(filtered_df)} found)")
 
     if filtered_df.empty:
@@ -278,7 +273,7 @@ def render_dashboard_page(lang: Language):
     with col1:
         view_mode = st.radio(
             "View Mode",
-            ["Table", "Cards"],
+            ["Cards", "Table"],
             horizontal=True
         )
 
@@ -391,11 +386,6 @@ def render_job_lookup_page(lang: Language):
     """
     st.title(lang.get("job_lookup"))
 
-    # Check configuration
-    if not is_database_configured():
-        render_configuration_error()
-        return
-
     st.markdown("""
     Search for a specific job by job number.
     """)
@@ -441,9 +431,20 @@ def render_sync_page(lang: Language):
     """
     st.title(lang.get("sync"))
 
-    # Check configuration
-    if not is_database_configured() or not is_zuper_configured():
-        render_configuration_error()
+    if not is_zuper_configured():
+        st.error("Zuper API not configured. Please add API credentials to secrets.")
+        st.markdown("""
+        ### Setup Required
+
+        Add the following to your `.streamlit/secrets.toml`:
+
+        ```toml
+        [zuper]
+        api_key = "your_zuper_api_key"
+        org_uid = "your_organization_uid"
+        base_url = "https://us-east-1.zuperpro.com"
+        ```
+        """)
         return
 
     st.markdown("""

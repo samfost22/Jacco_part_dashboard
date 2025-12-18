@@ -12,10 +12,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class DatabaseNotConfiguredError(Exception):
+    """Raised when database configuration is missing."""
+    pass
+
+
+def is_database_configured() -> bool:
+    """Check if database secrets are configured."""
+    try:
+        db_config = st.secrets.get("database", {})
+        required_keys = ["host", "port", "database", "user", "password"]
+        return all(key in db_config for key in required_keys)
+    except Exception:
+        return False
+
+
 class DatabaseConnection:
     """Manages database connection pool for the application."""
 
     _connection_pool: Optional[pool.SimpleConnectionPool] = None
+    _initialization_failed: bool = False
 
     @classmethod
     def initialize_pool(cls, min_connections: int = 1, max_connections: int = 10):
@@ -30,6 +46,15 @@ class DatabaseConnection:
             logger.warning("Connection pool already initialized")
             return
 
+        if cls._initialization_failed:
+            raise DatabaseNotConfiguredError("Database initialization previously failed")
+
+        if not is_database_configured():
+            cls._initialization_failed = True
+            raise DatabaseNotConfiguredError(
+                "Database secrets not configured. Please add database configuration to .streamlit/secrets.toml"
+            )
+
         try:
             db_config = st.secrets["database"]
 
@@ -40,11 +65,15 @@ class DatabaseConnection:
                 port=db_config["port"],
                 database=db_config["database"],
                 user=db_config["user"],
-                password=db_config["password"]
+                password=db_config["password"],
+                connect_timeout=10  # Add connection timeout
             )
             logger.info("Database connection pool initialized successfully")
 
+        except DatabaseNotConfiguredError:
+            raise
         except Exception as e:
+            cls._initialization_failed = True
             logger.error(f"Failed to initialize connection pool: {e}")
             raise
 
@@ -85,15 +114,21 @@ class DatabaseConnection:
             logger.info("All database connections closed")
 
 
-@st.cache_resource
 def get_db_connection():
     """
-    Streamlit cached resource for database connection.
-    This ensures the connection pool is initialized once and reused.
+    Get database connection class for managing connections.
+    Note: Not cached to allow proper error recovery.
 
     Returns:
         DatabaseConnection class for managing connections
+
+    Raises:
+        DatabaseNotConfiguredError: If database is not configured
     """
+    if not is_database_configured():
+        raise DatabaseNotConfiguredError(
+            "Database secrets not configured. Please add database configuration to Streamlit secrets."
+        )
     DatabaseConnection.initialize_pool()
     return DatabaseConnection
 

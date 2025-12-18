@@ -8,6 +8,7 @@ import pandas as pd
 from typing import Dict, Any
 
 from database.queries import JobQueries
+from database.connection import is_database_configured
 from utils.formatters import format_datetime, format_status, status_badge
 from utils.language import Language
 
@@ -20,6 +21,11 @@ def render_parts_inventory(lang: Language):
         lang: Language instance for translations
     """
     st.header(lang.get("parts_inventory"))
+
+    # Check if database is configured
+    if not is_database_configured():
+        st.error("Database not configured. Please add database secrets.")
+        return
 
     st.markdown("""
     Overview of parts status across all EU jobs.

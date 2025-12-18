@@ -149,36 +149,38 @@ class SyncManager:
         """
 
         # Convert tags list to JSON string for SQLite
-        tags = job_data.get("tags", [])
+        tags = job_data.get("job_tags", [])
         if isinstance(tags, list):
             tags = json.dumps(tags)
 
-        # Extract location data - Zuper uses nested structure
+        # Extract location data - Zuper uses customer_address.geo_cordinates as array [lat, lng]
         location = job_data.get("customer_address", {}) or {}
-        geo = location.get("geo_cordinates", {}) or {}
-        lat = geo.get("latitude") or job_data.get("latitude")
-        lon = geo.get("longitude") or job_data.get("longitude")
+        geo_coords = location.get("geo_cordinates", [])
+        lat, lon = None, None
+        if isinstance(geo_coords, list) and len(geo_coords) >= 2:
+            lat = geo_coords[0]
+            lon = geo_coords[1]
 
         # Get job category name from nested object
         job_category = job_data.get("job_category", {})
         if isinstance(job_category, dict):
-            job_category = job_category.get("name") or job_category.get("category_name")
+            job_category = job_category.get("category_name") or job_category.get("name")
 
-        # Get job status from job_status object
-        job_status = job_data.get("job_status", {})
-        if isinstance(job_status, dict):
-            job_status = job_status.get("name") or job_status.get("status_name")
+        # Get current job status from current_job_status object
+        current_status = job_data.get("current_job_status", {})
+        if isinstance(current_status, dict):
+            job_status = current_status.get("status_name") or current_status.get("name")
+        else:
+            job_status = None
 
-        # Get customer info
-        customer = job_data.get("customer", {}) or {}
-        customer_name = customer.get("name") or job_data.get("customer_name")
-        customer_uid = customer.get("customer_uid") or job_data.get("customer_uid")
+        # Get customer info - customer is just a string UID in the list response
+        customer_uid = job_data.get("customer")
+        # Get customer name from customer_address
+        customer_name = location.get("first_name") or job_data.get("customer_name")
 
         # Get address string
-        job_address = location.get("street") or job_data.get("job_address")
-        if isinstance(location, dict) and location:
-            addr_parts = [location.get("street"), location.get("city"), location.get("state"), location.get("zipcode")]
-            job_address = ", ".join([p for p in addr_parts if p])
+        addr_parts = [location.get("street"), location.get("city"), location.get("state"), location.get("country")]
+        job_address = ", ".join([p for p in addr_parts if p]) if location else None
 
         # Get assigned user info
         assigned_to = job_data.get("assigned_to", []) or []
@@ -187,18 +189,20 @@ class SyncManager:
         if assigned_to and isinstance(assigned_to, list) and len(assigned_to) > 0:
             first_tech = assigned_to[0]
             if isinstance(first_tech, dict):
-                assigned_technician = first_tech.get("name") or first_tech.get("full_name")
+                first_name = first_tech.get("first_name", "")
+                last_name = first_tech.get("last_name", "")
+                assigned_technician = f"{first_name} {last_name}".strip()
                 technician_uid = first_tech.get("user_uid")
 
-        # Extract and prepare job data (Zuper uses snake_case)
+        # Extract and prepare job data
         params = (
             job_uid,
-            job_data.get("job_no") or job_data.get("job_number") or job_data.get("jobNumber"),
-            job_data.get("job_title") or job_data.get("title"),
-            job_data.get("job_description") or job_data.get("description"),
+            job_data.get("work_order_number"),  # integer in Zuper
+            job_data.get("job_title"),
+            job_data.get("job_description"),
             job_status,
             job_category,
-            job_data.get("priority"),
+            job_data.get("job_priority"),
             customer_name,
             customer_uid,
             job_address,
@@ -206,15 +210,15 @@ class SyncManager:
             lon,
             assigned_technician,
             technician_uid,
-            self._format_datetime(job_data.get("scheduled_start_time") or job_data.get("scheduledStartTime")),
-            self._format_datetime(job_data.get("scheduled_end_time") or job_data.get("scheduledEndTime")),
-            self._format_datetime(job_data.get("actual_start_time") or job_data.get("actualStartTime")),
-            self._format_datetime(job_data.get("actual_end_time") or job_data.get("actualEndTime")),
-            self._format_datetime(job_data.get("created_at") or job_data.get("createdTime")),
-            self._format_datetime(job_data.get("updated_at") or job_data.get("modifiedTime")),
-            job_data.get("parts_status") or job_data.get("partsStatus"),
-            self._format_datetime(job_data.get("parts_delivered_date") or job_data.get("partsDeliveredDate")),
-            json.dumps(job_data.get("custom_fields", {}) or job_data.get("customFields", {})),
+            self._format_datetime(job_data.get("scheduled_start_time")),
+            self._format_datetime(job_data.get("scheduled_end_time")),
+            self._format_datetime(job_data.get("actual_start_time")),
+            self._format_datetime(job_data.get("actual_end_time")),
+            self._format_datetime(job_data.get("created_at")),
+            self._format_datetime(job_data.get("updated_at")),
+            job_data.get("parts_status"),
+            self._format_datetime(job_data.get("parts_delivered_date")),
+            json.dumps(job_data.get("custom_fields", [])),  # custom_fields is an array
             tags
         )
 

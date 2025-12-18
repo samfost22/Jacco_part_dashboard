@@ -72,7 +72,7 @@ class ZuperAPIClient:
         self.base_url = base_url
 
         self.headers = {
-            "x-api-key": self.api_key,
+            "authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
@@ -287,11 +287,12 @@ class ZuperAPIClient:
                     if "Field Requires Parts" in category_name or "Parts" in category_name:
                         all_jobs.append(job)
 
-                # Check if there are more pages - Zuper uses total_count
-                total_count = response.get("total_count", len(jobs))
-                total_pages = (total_count + page_size - 1) // page_size if total_count else 1
+                # Check if there are more pages - Zuper uses total_records, total_pages
+                total_records = response.get("total_records", len(jobs))
+                total_pages = response.get("total_pages", 1)
+                current_page = response.get("current_page", page)
 
-                logger.info(f"Fetched page {page}/{total_pages}, got {len(jobs)} jobs (total: {total_count}), matched {len(all_jobs)} parts jobs so far")
+                logger.info(f"Fetched page {current_page}/{total_pages}, got {len(jobs)} jobs (total: {total_records}), matched {len(all_jobs)} parts jobs so far")
 
                 if len(jobs) < page_size or page >= total_pages:
                     break
@@ -321,22 +322,18 @@ class ZuperAPIClient:
         # Filter by EU geographic bounds
         eu_jobs = []
         for job in all_parts_jobs:
-            # Handle different possible field names for location
-            # Zuper uses customer_address.geo_cordinates or job_location
+            # Zuper uses customer_address.geo_cordinates as array [lat, lng]
             location = job.get("customer_address", {}) or {}
-            geo = location.get("geo_cordinates", {}) or {}
+            geo_coords = location.get("geo_cordinates", [])
 
-            lat = geo.get("latitude") or job.get("latitude")
-            lon = geo.get("longitude") or job.get("longitude")
+            lat, lon = None, None
 
-            # Also check job_location
-            job_location = job.get("job_location", {}) or {}
-            if not lat:
-                lat = job_location.get("latitude")
-            if not lon:
-                lon = job_location.get("longitude")
+            # geo_cordinates is an array of numbers [lat, lng]
+            if isinstance(geo_coords, list) and len(geo_coords) >= 2:
+                lat = geo_coords[0]
+                lon = geo_coords[1]
 
-            # Convert to float if string
+            # Convert to float if needed
             try:
                 if lat is not None:
                     lat = float(lat)

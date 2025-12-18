@@ -260,6 +260,7 @@ def format_boolean(value: Optional[bool], true_text: str = "Yes", false_text: st
 def status_badge(status: str) -> str:
     """
     Create a colored badge for job status.
+    Uses actual Zuper status names.
 
     Args:
         status: Job status
@@ -268,13 +269,14 @@ def status_badge(status: str) -> str:
         HTML string with colored badge
     """
     status_colors = {
-        "scheduled": "#FFA500",      # Orange
-        "in progress": "#2196F3",     # Blue
-        "parts ordered": "#FF9800",   # Amber
-        "parts delivered": "#4CAF50", # Green
-        "completed": "#4CAF50",       # Green
-        "cancelled": "#F44336",       # Red
-        "on hold": "#9E9E9E",        # Grey
+        "new ticket": "#3498db",        # Blue
+        "received request": "#9b59b6",  # Purple
+        "parts on order": "#f39c12",    # Orange
+        "shop pick up": "#27ae60",      # Green
+        "shipped": "#16a085",           # Teal
+        "parts delivered": "#2ecc71",   # Bright green
+        "done": "#2ecc71",              # Bright green
+        "canceled": "#95a5a6",          # Gray
     }
 
     color = status_colors.get(status.lower(), "#607D8B")  # Default: Blue Grey

@@ -1,15 +1,20 @@
 """
 Database connection management for EU Parts Job Dashboard.
-Handles PostgreSQL connections using connection pooling.
+Handles SQLite connections - no external database server required.
 """
 
 import streamlit as st
-import psycopg2
-from psycopg2 import pool
-from typing import Optional
+import sqlite3
+from typing import Optional, List, Tuple, Any
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Database file path
+DB_DIR = Path(__file__).parent.parent / "data"
+DB_FILE = DB_DIR / "eu_parts_jobs.db"
 
 
 class DatabaseNotConfiguredError(Exception):
@@ -17,123 +22,85 @@ class DatabaseNotConfiguredError(Exception):
     pass
 
 
-def is_database_configured() -> bool:
-    """Check if database secrets are configured."""
-    try:
-        db_config = st.secrets.get("database", {})
-        required_keys = ["host", "port", "database", "user", "password"]
-        return all(key in db_config for key in required_keys)
-    except Exception:
-        return False
-
-
-class DatabaseConnection:
-    """Manages database connection pool for the application."""
-
-    _connection_pool: Optional[pool.SimpleConnectionPool] = None
-    _initialization_failed: bool = False
-
-    @classmethod
-    def initialize_pool(cls, min_connections: int = 1, max_connections: int = 10):
-        """
-        Initialize the database connection pool.
-
-        Args:
-            min_connections: Minimum number of connections in the pool
-            max_connections: Maximum number of connections in the pool
-        """
-        if cls._connection_pool is not None:
-            logger.warning("Connection pool already initialized")
-            return
-
-        if cls._initialization_failed:
-            raise DatabaseNotConfiguredError("Database initialization previously failed")
-
-        if not is_database_configured():
-            cls._initialization_failed = True
-            raise DatabaseNotConfiguredError(
-                "Database secrets not configured. Please add database configuration to .streamlit/secrets.toml"
-            )
-
-        try:
-            db_config = st.secrets["database"]
-
-            cls._connection_pool = psycopg2.pool.SimpleConnectionPool(
-                min_connections,
-                max_connections,
-                host=db_config["host"],
-                port=db_config["port"],
-                database=db_config["database"],
-                user=db_config["user"],
-                password=db_config["password"],
-                connect_timeout=10  # Add connection timeout
-            )
-            logger.info("Database connection pool initialized successfully")
-
-        except DatabaseNotConfiguredError:
-            raise
-        except Exception as e:
-            cls._initialization_failed = True
-            logger.error(f"Failed to initialize connection pool: {e}")
-            raise
-
-    @classmethod
-    def get_connection(cls):
-        """
-        Get a connection from the pool.
-
-        Returns:
-            A database connection from the pool
-        """
-        if cls._connection_pool is None:
-            cls.initialize_pool()
-
-        try:
-            return cls._connection_pool.getconn()
-        except Exception as e:
-            logger.error(f"Failed to get connection from pool: {e}")
-            raise
-
-    @classmethod
-    def return_connection(cls, connection):
-        """
-        Return a connection to the pool.
-
-        Args:
-            connection: The connection to return to the pool
-        """
-        if cls._connection_pool is not None and connection is not None:
-            cls._connection_pool.putconn(connection)
-
-    @classmethod
-    def close_all_connections(cls):
-        """Close all connections in the pool."""
-        if cls._connection_pool is not None:
-            cls._connection_pool.closeall()
-            cls._connection_pool = None
-            logger.info("All database connections closed")
-
-
-def get_db_connection():
+def get_db_path() -> str:
     """
-    Get database connection class for managing connections.
-    Note: Not cached to allow proper error recovery.
+    Get the database file path, creating directory if needed.
 
     Returns:
-        DatabaseConnection class for managing connections
-
-    Raises:
-        DatabaseNotConfiguredError: If database is not configured
+        Path to SQLite database file
     """
-    if not is_database_configured():
-        raise DatabaseNotConfiguredError(
-            "Database secrets not configured. Please add database configuration to Streamlit secrets."
-        )
-    DatabaseConnection.initialize_pool()
-    return DatabaseConnection
+    # Create data directory if it doesn't exist
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    return str(DB_FILE)
 
 
-def execute_query(query: str, params: tuple = None, fetch: bool = True):
+def is_database_configured() -> bool:
+    """
+    Check if database is available.
+    SQLite is always available - just needs the data directory.
+
+    Returns:
+        True (SQLite requires no configuration)
+    """
+    return True
+
+
+@st.cache_resource
+def get_db_connection():
+    """
+    Get a SQLite database connection.
+    Cached as a Streamlit resource to persist across reruns.
+
+    Returns:
+        SQLite connection object
+    """
+    db_path = get_db_path()
+    logger.info(f"Connecting to SQLite database at {db_path}")
+
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row  # Enable dict-like access to rows
+
+    # Enable foreign keys
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    # Initialize database schema if needed
+    _initialize_schema(conn)
+
+    return conn
+
+
+def _initialize_schema(conn: sqlite3.Connection):
+    """
+    Initialize the database schema if tables don't exist.
+
+    Args:
+        conn: SQLite connection
+    """
+    cursor = conn.cursor()
+
+    # Check if jobs table exists
+    cursor.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='jobs'
+    """)
+
+    if cursor.fetchone() is None:
+        logger.info("Initializing database schema...")
+        schema_file = Path(__file__).parent / "schema.sql"
+
+        if schema_file.exists():
+            with open(schema_file, 'r') as f:
+                schema_sql = f.read()
+            conn.executescript(schema_sql)
+            conn.commit()
+            logger.info("Database schema initialized successfully")
+        else:
+            logger.warning(f"Schema file not found: {schema_file}")
+
+    cursor.close()
+
+
+def execute_query(query: str, params: tuple = None, fetch: bool = True) -> Optional[Tuple[List, List[str]]]:
     """
     Execute a SQL query with automatic connection management.
 
@@ -143,14 +110,12 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
         fetch: Whether to fetch results (default: True)
 
     Returns:
-        Query results if fetch=True, otherwise None
+        Tuple of (results, column_names) if fetch=True, otherwise None
     """
-    db = get_db_connection()
-    conn = None
+    conn = get_db_connection()
     cursor = None
 
     try:
-        conn = db.get_connection()
         cursor = conn.cursor()
 
         if params:
@@ -160,7 +125,7 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
 
         if fetch:
             results = cursor.fetchall()
-            column_names = [desc[0] for desc in cursor.description]
+            column_names = [desc[0] for desc in cursor.description] if cursor.description else []
             conn.commit()
             return results, column_names
         else:
@@ -168,19 +133,18 @@ def execute_query(query: str, params: tuple = None, fetch: bool = True):
             return None
 
     except Exception as e:
-        if conn:
-            conn.rollback()
+        conn.rollback()
         logger.error(f"Database query error: {e}")
+        logger.error(f"Query: {query}")
+        logger.error(f"Params: {params}")
         raise
 
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            db.return_connection(conn)
 
 
-def execute_many(query: str, data: list):
+def execute_many(query: str, data: list) -> int:
     """
     Execute a query with multiple parameter sets (batch insert/update).
 
@@ -191,28 +155,31 @@ def execute_many(query: str, data: list):
     Returns:
         Number of rows affected
     """
-    db = get_db_connection()
-    conn = None
+    conn = get_db_connection()
     cursor = None
 
     try:
-        conn = db.get_connection()
         cursor = conn.cursor()
-
         cursor.executemany(query, data)
         rows_affected = cursor.rowcount
-
         conn.commit()
         return rows_affected
 
     except Exception as e:
-        if conn:
-            conn.rollback()
+        conn.rollback()
         logger.error(f"Database batch operation error: {e}")
         raise
 
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            db.return_connection(conn)
+
+
+def close_connection():
+    """Close the database connection."""
+    try:
+        conn = get_db_connection()
+        conn.close()
+        logger.info("Database connection closed")
+    except Exception as e:
+        logger.error(f"Error closing database connection: {e}")

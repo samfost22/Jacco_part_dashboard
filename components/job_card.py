@@ -149,6 +149,13 @@ def render_job_card(job: Dict[str, Any], show_details: bool = True):
 
                     st.map(map_df, zoom=13)
 
+        # View in Zuper button
+        st.divider()
+        job_uid = job.get('job_uid')
+        if job_uid:
+            zuper_url = f"https://us-east-1.zuperpro.com/apps/jobs/{job_uid}"
+            st.link_button("View in Zuper", zuper_url, type="primary")
+
 
 def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
     """
@@ -181,9 +188,11 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
                 status = job.get('job_status', 'Unknown')
                 st.markdown(status_badge(format_status(status)), unsafe_allow_html=True)
 
-            # View details button
-            if st.button("View Details", key=f"view_{idx}_{job.get('job_uid')}"):
-                st.session_state['selected_job'] = job.to_dict()
+            # View in Zuper button
+            job_uid = job.get('job_uid')
+            if job_uid:
+                zuper_url = f"https://us-east-1.zuperpro.com/apps/jobs/{job_uid}"
+                st.link_button("View in Zuper", zuper_url, type="primary", key=f"zuper_{idx}_{job_uid}")
 
             st.divider()
 

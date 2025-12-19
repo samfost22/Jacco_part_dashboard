@@ -125,6 +125,8 @@ class SyncManager:
             priority,
             customer_name,
             customer_uid,
+            asset_name,
+            asset_uid,
             job_address,
             latitude,
             longitude,
@@ -144,7 +146,7 @@ class SyncManager:
         ) VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, datetime('now')
+            ?, ?, ?, ?, ?, ?, datetime('now')
         )
         """
 
@@ -204,6 +206,25 @@ class SyncManager:
             # Use last 8 chars of job_uid as a fallback identifier
             work_order_number = f"JOB-{job_uid[-8:]}" if job_uid else None
 
+        # Get asset/property info from Zuper - could be in 'property' or 'assets' field
+        asset_name = None
+        asset_uid = None
+
+        # Try 'property' field first (common in Zuper)
+        property_data = job_data.get("property", {}) or {}
+        if isinstance(property_data, dict):
+            asset_name = property_data.get("property_name") or property_data.get("name")
+            asset_uid = property_data.get("property_uid") or property_data.get("uid")
+
+        # Try 'assets' array if property not found
+        if not asset_name:
+            assets = job_data.get("assets", []) or []
+            if assets and isinstance(assets, list) and len(assets) > 0:
+                first_asset = assets[0]
+                if isinstance(first_asset, dict):
+                    asset_name = first_asset.get("asset_name") or first_asset.get("name")
+                    asset_uid = first_asset.get("asset_uid") or first_asset.get("uid")
+
         # Extract and prepare job data using Zuper API snake_case field names
         # and already-extracted variables from above
         params = (
@@ -216,6 +237,8 @@ class SyncManager:
             job_data.get("job_priority"),  # Zuper uses job_priority
             customer_name,  # Already extracted from customer_address.first_name
             customer_uid,  # Already extracted from customer field
+            asset_name,  # Extracted from property or assets
+            asset_uid,  # Extracted from property or assets
             job_address,  # Already extracted from customer_address components
             lat,  # Already extracted from customer_address.geo_cordinates
             lon,  # Already extracted from customer_address.geo_cordinates

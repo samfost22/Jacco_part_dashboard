@@ -96,6 +96,37 @@ def _initialize_schema(conn: sqlite3.Connection):
             logger.info("Database schema initialized successfully")
         else:
             logger.warning(f"Schema file not found: {schema_file}")
+    else:
+        # Run migrations for existing database
+        _run_migrations(conn)
+
+    cursor.close()
+
+
+def _run_migrations(conn: sqlite3.Connection):
+    """
+    Run database migrations for schema updates.
+
+    Args:
+        conn: SQLite connection
+    """
+    cursor = conn.cursor()
+
+    # Check if asset_name column exists, add if not
+    cursor.execute("PRAGMA table_info(jobs)")
+    columns = [col[1] for col in cursor.fetchall()]
+
+    if 'asset_name' not in columns:
+        logger.info("Running migration: Adding asset_name column...")
+        cursor.execute("ALTER TABLE jobs ADD COLUMN asset_name TEXT")
+        conn.commit()
+        logger.info("Migration complete: asset_name column added")
+
+    if 'asset_uid' not in columns:
+        logger.info("Running migration: Adding asset_uid column...")
+        cursor.execute("ALTER TABLE jobs ADD COLUMN asset_uid TEXT")
+        conn.commit()
+        logger.info("Migration complete: asset_uid column added")
 
     cursor.close()
 

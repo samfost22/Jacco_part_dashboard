@@ -50,15 +50,16 @@ def render_job_card(job: Dict[str, Any], show_details: bool = True):
             with st.expander("Description"):
                 st.write(job.get('description'))
 
-        # Customer and location info
+        # Asset and location info
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**Customer Information**")
-            st.write(f"Customer: {job.get('customer_name', 'N/A')}")
+            st.markdown("**Asset Information**")
+            asset_name = job.get('asset_name') or 'N/A'
+            st.write(f"Asset: {asset_name}")
 
-            if job.get('customer_uid'):
-                st.caption(f"Customer UID: {job.get('customer_uid')}")
+            if job.get('asset_uid'):
+                st.caption(f"Asset UID: {job.get('asset_uid')}")
 
         with col2:
             st.markdown("**Location**")
@@ -178,7 +179,7 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
     for idx, (_, job) in enumerate(jobs_df.head(max_items).iterrows()):
         job_number = job.get('job_number', 'N/A')
         status = job.get('job_status', 'Unknown')
-        customer = job.get('customer_name', 'N/A')
+        asset = job.get('asset_name') or 'N/A'
         title = job.get('title', '')
         scheduled = format_datetime(job.get('scheduled_start_time'))
         job_uid = job.get('job_uid')
@@ -205,8 +206,8 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
                 st.markdown(f"### {job_number}")
 
             with col2:
-                if customer and customer != 'N/A':
-                    st.markdown(f"👤 **{customer}**")
+                if asset and asset != 'N/A':
+                    st.markdown(f"🏭 **{asset}**")
                 if title:
                     st.caption(title[:50] + "..." if len(title) > 50 else title)
 
@@ -240,7 +241,8 @@ def render_job_summary(job: Dict[str, Any]):
             st.write(job.get('title', 'No title'))
 
         with col3:
-            st.write(job.get('customer_name', 'N/A'))
+            asset = job.get('asset_name') or 'N/A'
+            st.write(asset)
 
         with col4:
             status = job.get('job_status', 'Unknown')

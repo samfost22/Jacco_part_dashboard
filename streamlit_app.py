@@ -24,6 +24,13 @@ from database.connection import is_database_configured, DatabaseNotConfiguredErr
 from components.job_card import render_job_card, render_job_list
 from components.bulk_lookup import render_bulk_lookup
 from components.parts_inventory import render_parts_inventory
+from components.ai_assistant import (
+    is_ai_available,
+    render_ai_search_bar,
+    render_ai_chat,
+    render_ai_sidebar_status,
+    render_summary_generator
+)
 from src.zuper_api.client import get_zuper_client, is_zuper_configured, ZuperAPINotConfiguredError
 from src.sync.sync_manager import SyncManager
 from utils.language import Language
@@ -201,6 +208,10 @@ def render_sidebar():
             lang.get("job_lookup"): "job_lookup",
         }
 
+        # Add AI Assistant page if available
+        if FeatureFlags.ENABLE_AI_ASSISTANT and is_ai_available():
+            pages["AI Assistant"] = "ai_assistant"
+
         if FeatureFlags.ENABLE_MANUAL_SYNC:
             pages[lang.get("sync")] = "sync"
 
@@ -214,6 +225,11 @@ def render_sidebar():
 
         # Sync information
         render_sync_info(lang)
+
+        # AI status indicator
+        if FeatureFlags.ENABLE_AI_ASSISTANT:
+            st.divider()
+            render_ai_sidebar_status()
 
         return pages[selected_page], lang
 
@@ -343,6 +359,20 @@ def render_status_tiles(jobs_df: pd.DataFrame):
             """, unsafe_allow_html=True)
 
 
+def render_configuration_error():
+    """Render configuration error message."""
+    st.error("Configuration required")
+    st.markdown("""
+    ### Setup Required
+    Please configure the Zuper API credentials in `.streamlit/secrets.toml`:
+    ```toml
+    [zuper]
+    api_key = "your_zuper_api_key"
+    base_url = "https://us-east-1.zuperpro.com/api"
+    ```
+    """)
+
+
 def render_dashboard_page(lang: Language):
     """Render main dashboard page."""
     st.title(lang.get("eu_parts_jobs"))
@@ -374,6 +404,36 @@ def render_dashboard_page(lang: Language):
     if st.session_state.status_filter != "All":
         filtered_df = filtered_df[filtered_df['job_status'] == st.session_state.status_filter]
 
+    # AI Search (if available)
+    ai_filters = None
+    if FeatureFlags.ENABLE_AI_SEARCH and is_ai_available():
+        customers = jobs_df['customer_name'].dropna().unique().tolist()
+        ai_filters = render_ai_search_bar(
+            available_statuses=AppSettings.JOB_STATUSES,
+            available_priorities=AppSettings.PRIORITY_LEVELS,
+            available_customers=customers
+        )
+
+        if ai_filters:
+            # Apply AI-parsed filters
+            if ai_filters.get("status"):
+                filtered_df = filtered_df[filtered_df['job_status'].isin(ai_filters["status"])]
+            if ai_filters.get("priority"):
+                filtered_df = filtered_df[filtered_df['priority'].isin(ai_filters["priority"])]
+            if ai_filters.get("customer"):
+                customer_filter = ai_filters["customer"].lower()
+                filtered_df = filtered_df[
+                    filtered_df['customer_name'].str.lower().str.contains(customer_filter, na=False)
+                ]
+            if ai_filters.get("search_text"):
+                search_text = ai_filters["search_text"].lower()
+                filtered_df = filtered_df[
+                    filtered_df['title'].str.lower().str.contains(search_text, na=False) |
+                    filtered_df['description'].str.lower().str.contains(search_text, na=False)
+                ]
+
+        st.divider()
+
     # Search box
     search_term = st.text_input(
         lang.get("search"),
@@ -402,6 +462,7 @@ def render_dashboard_page(lang: Language):
     with col1:
         view_mode = st.radio("View Mode", ["Cards", "Table"], horizontal=True)
     with col2:
+        show_map = False
         if FeatureFlags.ENABLE_MAP_VIEW:
             show_map = st.checkbox(lang.get("show_map"))
 
@@ -558,6 +619,55 @@ def render_export_options(jobs_df: pd.DataFrame, lang: Language):
         )
 
 
+def render_ai_assistant_page(lang: Language):
+    """Render AI assistant page with chat and summary generation."""
+    st.title("AI Assistant")
+    st.markdown("Chat with AI to get insights about your parts jobs, generate reports, or ask questions.")
+
+    # Load job data for context
+    try:
+        jobs_df = JobQueries.get_all_eu_parts_jobs()
+        jobs_list = jobs_df.to_dict('records') if not jobs_df.empty else []
+
+        # Build context for AI
+        status_counts = jobs_df['job_status'].value_counts().to_dict() if not jobs_df.empty else {}
+        context = {
+            "total_jobs": len(jobs_df),
+            "status_counts": status_counts,
+            "current_filters": None
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading jobs for AI: {e}")
+        jobs_list = []
+        context = {"total_jobs": 0, "status_counts": {}}
+
+    # Two-column layout
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        render_ai_chat(context=context)
+
+    with col2:
+        st.markdown("### Quick Actions")
+
+        # Summary generator
+        if jobs_list:
+            render_summary_generator(jobs_list)
+
+        st.divider()
+
+        # Quick stats
+        st.markdown("### Current Stats")
+        if context.get("total_jobs"):
+            st.metric("Total Jobs", context["total_jobs"])
+
+            if context.get("status_counts"):
+                st.markdown("**By Status:**")
+                for status, count in sorted(context["status_counts"].items(), key=lambda x: -x[1])[:5]:
+                    st.write(f"- {status}: {count}")
+
+
 def main():
     """Main application entry point."""
     initialize_session_state()
@@ -567,6 +677,11 @@ def main():
         render_dashboard_page(lang)
     elif selected_page == "job_lookup":
         render_job_lookup_page(lang)
+    elif selected_page == "ai_assistant":
+        if FeatureFlags.ENABLE_AI_ASSISTANT and is_ai_available():
+            render_ai_assistant_page(lang)
+        else:
+            st.warning("AI Assistant is not available. Please configure your Anthropic API key.")
     elif selected_page == "bulk_lookup":
         if FeatureFlags.ENABLE_BULK_LOOKUP:
             render_bulk_lookup(lang)

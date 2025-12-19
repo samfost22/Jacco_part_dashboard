@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     customer_name TEXT,
     customer_uid TEXT,
 
+    -- Asset/Property information
+    asset_name TEXT,
+    asset_uid TEXT,
+
     -- Location information
     job_address TEXT,
     latitude REAL,

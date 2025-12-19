@@ -176,6 +176,11 @@ class FeatureFlags:
     ENABLE_CUSTOM_FIELDS = True
     ENABLE_DARK_MODE = False
 
+    # AI features (Anthropic API)
+    ENABLE_AI_ASSISTANT = True
+    ENABLE_AI_SEARCH = True
+    ENABLE_AI_ANALYSIS = True
+
     @classmethod
     def is_enabled(cls, feature_name: str) -> bool:
         """

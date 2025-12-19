@@ -269,7 +269,7 @@ def render_status_tiles(jobs_df: pd.DataFrame):
     statuses = [
         ("All", "All", "📋", "tile-all", total_jobs),
         ("New", "New Ticket", "🆕", "tile-new", status_counts.get("New Ticket", 0)),
-        ("Received", "Received Request", "📥", "tile-received", status_counts.get("Received Request", 0)),
+        ("Received Request", "Received Request", "📥", "tile-received", status_counts.get("Received Request", 0)),
         ("Ordered", "Parts On Order", "🛒", "tile-ordered", status_counts.get("Parts On Order", 0)),
         ("Pickup", "Shop Pick UP", "🏪", "tile-pickup", status_counts.get("Shop Pick UP", 0)),
         ("Shipped", "Shipped", "📦", "tile-shipped", status_counts.get("Shipped", 0)),

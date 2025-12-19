@@ -72,7 +72,7 @@ class ZuperAPIClient:
         self.base_url = base_url
 
         self.headers = {
-            "authorization": f"Bearer {self.api_key}",
+            "x-api-key": self.api_key,
             "Content-Type": "application/json",
             "Accept": "application/json"
         }

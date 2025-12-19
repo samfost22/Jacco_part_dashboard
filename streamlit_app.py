@@ -31,12 +31,8 @@ from utils.formatters import format_datetime, format_status, status_badge
 from utils.gps_helpers import format_map_data, get_center_point
 from config.settings import AppSettings, FeatureFlags
 
-# Initialize database on startup
-try:
-    init_database()
-    logger.info("Database initialized successfully")
-except Exception as e:
-    logger.warning(f"Database initialization skipped: {e}")
+# Database is automatically initialized when first connection is made
+# via get_db_connection() in database/connection.py
 
 
 # Page configuration

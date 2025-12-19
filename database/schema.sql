@@ -4,7 +4,7 @@
 -- Main jobs table
 CREATE TABLE IF NOT EXISTS jobs (
     job_uid TEXT PRIMARY KEY,
-    job_number TEXT UNIQUE NOT NULL,
+    job_number TEXT UNIQUE,  -- work_order_number from Zuper API, may be NULL
     title TEXT,
     description TEXT,
     job_status TEXT,

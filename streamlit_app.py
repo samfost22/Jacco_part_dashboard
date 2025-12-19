@@ -246,7 +246,7 @@ def render_status_tiles(jobs_df: pd.DataFrame):
         ("Shipped", "Shipped", "📦", "tile-shipped", status_counts.get("Shipped", 0)),
         ("Delivered", "Parts delivered", "✅", "tile-delivered", status_counts.get("Parts delivered", 0)),
         ("Done", "Done", "🎉", "tile-done", status_counts.get("Done", 0)),
-        ("Canceled", "Canceled", "❌", "tile-canceled", status_counts.get("Canceled", 0)),
+        ("Canceled", "Canceled", "⊘", "tile-canceled", status_counts.get("Canceled", 0)),
     ]
 
     # Display in 2 rows for better readability

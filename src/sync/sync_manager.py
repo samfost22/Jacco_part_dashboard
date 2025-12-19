@@ -105,7 +105,8 @@ class SyncManager:
         Returns:
             "created" or "updated" depending on operation
         """
-        job_uid = job_data.get("jobUid")
+        # Zuper API uses snake_case field names
+        job_uid = job_data.get("job_uid") or job_data.get("jobUid")
 
         # Check if job exists
         check_query = "SELECT job_uid FROM jobs WHERE job_uid = ?"
@@ -148,9 +149,50 @@ class SyncManager:
         """
 
         # Convert tags list to JSON string for SQLite
-        tags = job_data.get("tags", [])
+        tags = job_data.get("job_tags", [])
         if isinstance(tags, list):
             tags = json.dumps(tags)
+
+        # Extract location data - Zuper uses customer_address.geo_cordinates as array [lat, lng]
+        location = job_data.get("customer_address", {}) or {}
+        geo_coords = location.get("geo_cordinates", [])
+        lat, lon = None, None
+        if isinstance(geo_coords, list) and len(geo_coords) >= 2:
+            lat = geo_coords[0]
+            lon = geo_coords[1]
+
+        # Get job category name from nested object
+        job_category = job_data.get("job_category", {})
+        if isinstance(job_category, dict):
+            job_category = job_category.get("category_name") or job_category.get("name")
+
+        # Get current job status from current_job_status object
+        current_status = job_data.get("current_job_status", {})
+        if isinstance(current_status, dict):
+            job_status = current_status.get("status_name") or current_status.get("name")
+        else:
+            job_status = None
+
+        # Get customer info - customer is just a string UID in the list response
+        customer_uid = job_data.get("customer")
+        # Get customer name from customer_address
+        customer_name = location.get("first_name") or job_data.get("customer_name")
+
+        # Get address string
+        addr_parts = [location.get("street"), location.get("city"), location.get("state"), location.get("country")]
+        job_address = ", ".join([p for p in addr_parts if p]) if location else None
+
+        # Get assigned user info
+        assigned_to = job_data.get("assigned_to", []) or []
+        assigned_technician = None
+        technician_uid = None
+        if assigned_to and isinstance(assigned_to, list) and len(assigned_to) > 0:
+            first_tech = assigned_to[0]
+            if isinstance(first_tech, dict):
+                first_name = first_tech.get("first_name", "")
+                last_name = first_tech.get("last_name", "")
+                assigned_technician = f"{first_name} {last_name}".strip()
+                technician_uid = first_tech.get("user_uid")
 
         # Extract and prepare job data
         params = (

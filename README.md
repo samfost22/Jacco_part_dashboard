@@ -55,20 +55,13 @@ The dashboard filters jobs to the European region:
 
 5. **Configure secrets**
    - Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
-   - Fill in your Zuper API credentials and database connection details:
+   - Fill in your Zuper API credentials:
      ```toml
      [zuper]
      api_key = "your_zuper_api_key"
-     org_uid = "your_organization_uid"
-     base_url = "https://api.zuper.com/v1"
-
-     [database]
-     host = "your_database_host"
-     port = 5432
-     database = "eu_parts_jobs"
-     user = "your_db_user"
-     password = "your_db_password"
+     base_url = "https://us-east-1.zuperpro.com/api"
      ```
+   - Note: This app uses SQLite (no database configuration needed)
 
 6. **Run the application**
    ```bash

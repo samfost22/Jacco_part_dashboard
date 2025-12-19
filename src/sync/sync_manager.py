@@ -183,22 +183,8 @@ class SyncManager:
         if isinstance(customer_name, dict):
             customer_name = customer_name.get("name") or str(customer_name)
 
-        # Get address string - ensure all parts are strings, not dicts
-        def safe_str(val):
-            """Convert value to string, handling dicts and None."""
-            if val is None:
-                return None
-            if isinstance(val, dict):
-                return val.get("name") or val.get("value") or None
-            return str(val) if val else None
-
-        addr_parts = [
-            safe_str(location.get("street")),
-            safe_str(location.get("city")),
-            safe_str(location.get("state")),
-            safe_str(location.get("country"))
-        ]
-        job_address = ", ".join([p for p in addr_parts if p]) if location else None
+        # Address not needed - only GPS coordinates are used for EU filtering
+        job_address = None
 
         # Get assigned user info
         assigned_to = job_data.get("assigned_to", []) or []

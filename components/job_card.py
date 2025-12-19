@@ -153,7 +153,7 @@ def render_job_card(job: Dict[str, Any], show_details: bool = True):
         st.divider()
         job_uid = job.get('job_uid')
         if job_uid:
-            zuper_url = f"https://app.zuperpro.com/company/jobs/{job_uid}/details"
+            zuper_url = f"https://web.zuperpro.com/company/jobs/{job_uid}/details"
             st.link_button("View in Zuper", zuper_url, type="primary")
 
 
@@ -217,7 +217,7 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
 
             with col4:
                 if job_uid:
-                    zuper_url = f"https://app.zuperpro.com/company/jobs/{job_uid}/details"
+                    zuper_url = f"https://web.zuperpro.com/company/jobs/{job_uid}/details"
                     st.link_button("Open", zuper_url, type="primary")
 
             st.divider()

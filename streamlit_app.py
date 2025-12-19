@@ -108,6 +108,35 @@ st.markdown("""
     transform: translateY(-2px) scale(1.02);
 }
 
+/* Hide the Select button text and make it overlay the tile */
+.tile-button button {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+.tile-button {
+    position: relative;
+}
+.tile-button > div:first-child {
+    position: relative;
+}
+.tile-button > div:last-child button {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 160px;
+    margin-top: -160px;
+    opacity: 0;
+    cursor: pointer;
+}
+
 /* Job cards - cleaner look */
 .job-card {
     background: #f8f9fa;
@@ -257,34 +286,63 @@ def render_status_tiles(jobs_df: pd.DataFrame):
         with cols1[idx]:
             is_selected = st.session_state.status_filter == api_status
             selected_class = "tile-selected" if is_selected else ""
-            st.markdown(f"""
-                <div class="status-tile {css_class} {selected_class}">
-                    <div class="icon">{icon}</div>
-                    <h3>{label}</h3>
-                    <p>{count}</p>
-                </div>
-            """, unsafe_allow_html=True)
-            if st.button("Select", key=f"tile_{api_status}", use_container_width=True):
+            # Clickable tile - button overlays the tile
+            if st.button(f"{icon}\n{label}\n{count}", key=f"tile_{api_status}", use_container_width=True, type="secondary"):
                 st.session_state.status_filter = api_status
                 st.rerun()
+            # Visual tile overlay
+            st.markdown(f"""
+                <style>
+                div[data-testid="stButton"]:has(button[key="tile_{api_status}"]) button {{
+                    background: {'linear-gradient(135deg, #546E7A, #607D8B)' if css_class == 'tile-all' else
+                                'linear-gradient(135deg, #1976D2, #2196F3)' if css_class == 'tile-new' else
+                                'linear-gradient(135deg, #7B1FA2, #9C27B0)' if css_class == 'tile-received' else
+                                'linear-gradient(135deg, #F57C00, #FF9800)' if css_class == 'tile-ordered' else
+                                'linear-gradient(135deg, #00838F, #00ACC1)' if css_class == 'tile-pickup' else
+                                'linear-gradient(135deg, #00796B, #009688)' if css_class == 'tile-shipped' else
+                                'linear-gradient(135deg, #388E3C, #4CAF50)' if css_class == 'tile-delivered' else
+                                'linear-gradient(135deg, #2E7D32, #43A047)' if css_class == 'tile-done' else
+                                'linear-gradient(135deg, #757575, #9E9E9E)'} !important;
+                    color: white !important;
+                    border: none !important;
+                    min-height: 140px !important;
+                    font-size: 14px !important;
+                    font-weight: 700 !important;
+                    white-space: pre-line !important;
+                    {'box-shadow: 0 0 0 3px #fff, 0 0 0 5px #1a1a1a !important; transform: scale(1.02);' if is_selected else ''}
+                }}
+                </style>
+            """, unsafe_allow_html=True)
 
-    # Row 2: Shipped, Delivered, Done, Canceled (centered with spacing)
+    # Row 2: Shipped, Delivered, Done, Canceled
     row2 = statuses[5:]
-    cols2 = st.columns([1, 1, 1, 1, 1])  # 5 columns, use middle 4
+    cols2 = st.columns([1, 1, 1, 1, 1])
     for idx, (label, api_status, icon, css_class, count) in enumerate(row2):
         with cols2[idx]:
             is_selected = st.session_state.status_filter == api_status
             selected_class = "tile-selected" if is_selected else ""
-            st.markdown(f"""
-                <div class="status-tile {css_class} {selected_class}">
-                    <div class="icon">{icon}</div>
-                    <h3>{label}</h3>
-                    <p>{count}</p>
-                </div>
-            """, unsafe_allow_html=True)
-            if st.button("Select", key=f"tile_{api_status}", use_container_width=True):
+            # Clickable tile - button overlays the tile
+            if st.button(f"{icon}\n{label}\n{count}", key=f"tile_{api_status}", use_container_width=True, type="secondary"):
                 st.session_state.status_filter = api_status
                 st.rerun()
+            # Visual tile overlay
+            st.markdown(f"""
+                <style>
+                div[data-testid="stButton"]:has(button[key="tile_{api_status}"]) button {{
+                    background: {'linear-gradient(135deg, #00796B, #009688)' if css_class == 'tile-shipped' else
+                                'linear-gradient(135deg, #388E3C, #4CAF50)' if css_class == 'tile-delivered' else
+                                'linear-gradient(135deg, #2E7D32, #43A047)' if css_class == 'tile-done' else
+                                'linear-gradient(135deg, #757575, #9E9E9E)'} !important;
+                    color: white !important;
+                    border: none !important;
+                    min-height: 140px !important;
+                    font-size: 14px !important;
+                    font-weight: 700 !important;
+                    white-space: pre-line !important;
+                    {'box-shadow: 0 0 0 3px #fff, 0 0 0 5px #1a1a1a !important; transform: scale(1.02);' if is_selected else ''}
+                }}
+                </style>
+            """, unsafe_allow_html=True)
 
 
 def render_dashboard_page(lang: Language):

@@ -64,7 +64,7 @@ class SyncManager:
                     elif result == "updated":
                         stats["jobs_updated"] += 1
                 except Exception as e:
-                    error_msg = f"Error upserting job {job.get('jobNumber', 'unknown')}: {str(e)}"
+                    error_msg = f"Error upserting job {job.get('work_order_number', 'unknown')}: {str(e)}"
                     logger.error(error_msg)
                     stats["errors"].append(error_msg)
 
@@ -194,31 +194,38 @@ class SyncManager:
                 assigned_technician = f"{first_name} {last_name}".strip()
                 technician_uid = first_tech.get("user_uid")
 
-        # Extract and prepare job data
+        # Get work_order_number, fall back to job_uid prefix if not available
+        work_order_number = job_data.get("work_order_number")
+        if work_order_number is None:
+            # Use last 8 chars of job_uid as a fallback identifier
+            work_order_number = f"JOB-{job_uid[-8:]}" if job_uid else None
+
+        # Extract and prepare job data using Zuper API snake_case field names
+        # and already-extracted variables from above
         params = (
             job_uid,
-            job_data.get("jobNumber"),
-            job_data.get("title"),
-            job_data.get("description"),
-            job_data.get("jobStatus"),
-            job_data.get("jobCategory"),
-            job_data.get("priority"),
-            job_data.get("customerName"),
-            job_data.get("customerUid"),
-            job_data.get("jobAddress"),
-            job_data.get("latitude"),
-            job_data.get("longitude"),
-            job_data.get("assignedTechnician"),
-            job_data.get("technicianUid"),
-            self._format_datetime(job_data.get("scheduledStartTime")),
-            self._format_datetime(job_data.get("scheduledEndTime")),
-            self._format_datetime(job_data.get("actualStartTime")),
-            self._format_datetime(job_data.get("actualEndTime")),
-            self._format_datetime(job_data.get("createdTime")),
-            self._format_datetime(job_data.get("modifiedTime")),
-            job_data.get("partsStatus"),
-            self._format_datetime(job_data.get("partsDeliveredDate")),
-            json.dumps(job_data.get("customFields", {})),
+            work_order_number,  # Zuper uses work_order_number
+            job_data.get("job_title"),  # Zuper uses job_title
+            job_data.get("job_description"),  # Zuper uses job_description
+            job_status,  # Already extracted from current_job_status.status_name
+            job_category,  # Already extracted from job_category.category_name
+            job_data.get("job_priority"),  # Zuper uses job_priority
+            customer_name,  # Already extracted from customer_address.first_name
+            customer_uid,  # Already extracted from customer field
+            job_address,  # Already extracted from customer_address components
+            lat,  # Already extracted from customer_address.geo_cordinates
+            lon,  # Already extracted from customer_address.geo_cordinates
+            assigned_technician,  # Already extracted from assigned_to array
+            technician_uid,  # Already extracted from assigned_to array
+            self._format_datetime(job_data.get("scheduled_start_time")),
+            self._format_datetime(job_data.get("scheduled_end_time")),
+            self._format_datetime(job_data.get("work_start_time")),  # Zuper uses work_start_time
+            self._format_datetime(job_data.get("work_end_time")),  # Zuper uses work_end_time
+            self._format_datetime(job_data.get("created_at")),  # Zuper uses created_at
+            self._format_datetime(job_data.get("updated_at")),  # Zuper uses updated_at
+            job_data.get("parts_status"),  # Zuper uses snake_case
+            self._format_datetime(job_data.get("parts_delivered_date")),
+            json.dumps(job_data.get("custom_fields", {})),  # Zuper uses snake_case
             tags
         )
 

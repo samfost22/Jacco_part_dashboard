@@ -192,7 +192,7 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
             job_uid = job.get('job_uid')
             if job_uid:
                 zuper_url = f"https://us-east-1.zuperpro.com/apps/jobs/{job_uid}"
-                st.link_button("View in Zuper", zuper_url, type="primary", key=f"zuper_{idx}_{job_uid}")
+                st.link_button("View in Zuper", zuper_url, type="primary")
 
             st.divider()
 

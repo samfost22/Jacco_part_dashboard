@@ -169,30 +169,56 @@ def render_job_list(jobs_df: pd.DataFrame, max_items: int = 10):
         st.info("No jobs to display")
         return
 
-    st.write(f"Showing {min(len(jobs_df), max_items)} of {len(jobs_df)} jobs")
+    # Header with count
+    showing = min(len(jobs_df), max_items)
+    total = len(jobs_df)
+    st.caption(f"📋 Showing {showing} of {total} jobs")
 
-    # Display jobs
+    # Display jobs in a cleaner card format
     for idx, (_, job) in enumerate(jobs_df.head(max_items).iterrows()):
+        job_number = job.get('job_number', 'N/A')
+        status = job.get('job_status', 'Unknown')
+        customer = job.get('customer_name', 'N/A')
+        title = job.get('title', '')
+        scheduled = format_datetime(job.get('scheduled_start_time'))
+        job_uid = job.get('job_uid')
+
+        # Status icon mapping
+        status_icons = {
+            'New Ticket': '🆕',
+            'Received Request': '📥',
+            'Parts On Order': '🛒',
+            'Shop Pick UP': '🏪',
+            'Shipped': '📦',
+            'Parts delivered': '✅',
+            'Done': '🎉',
+            'Canceled': '❌'
+        }
+        icon = status_icons.get(status, '📋')
+
+        # Card layout
         with st.container():
-            col1, col2, col3 = st.columns([2, 2, 1])
+            # Row 1: Job number, status, and icon
+            col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
 
             with col1:
-                st.markdown(f"**{job.get('job_number', 'N/A')}**")
-                st.caption(job.get('title', 'No title'))
+                st.markdown(f"### {job_number}")
 
             with col2:
-                st.write(job.get('customer_name', 'N/A'))
-                st.caption(format_datetime(job.get('scheduled_start_time')))
+                if customer and customer != 'N/A':
+                    st.markdown(f"👤 **{customer}**")
+                if title:
+                    st.caption(title[:50] + "..." if len(title) > 50 else title)
 
             with col3:
-                status = job.get('job_status', 'Unknown')
-                st.markdown(status_badge(format_status(status)), unsafe_allow_html=True)
+                st.markdown(f"{icon} **{status}**")
+                if scheduled and scheduled != 'N/A':
+                    st.caption(f"📅 {scheduled}")
 
-            # View in Zuper button
-            job_uid = job.get('job_uid')
-            if job_uid:
-                zuper_url = f"https://us-east-1.zuperpro.com/apps/jobs/{job_uid}"
-                st.link_button("View in Zuper", zuper_url, type="primary")
+            with col4:
+                if job_uid:
+                    zuper_url = f"https://us-east-1.zuperpro.com/apps/jobs/{job_uid}"
+                    st.link_button("Open", zuper_url, type="primary")
 
             st.divider()
 

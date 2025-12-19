@@ -462,6 +462,7 @@ def render_dashboard_page(lang: Language):
     with col1:
         view_mode = st.radio("View Mode", ["Cards", "Table"], horizontal=True)
     with col2:
+        show_map = False
         if FeatureFlags.ENABLE_MAP_VIEW:
             show_map = st.checkbox(lang.get("show_map"))
 

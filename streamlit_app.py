@@ -48,43 +48,48 @@ st.markdown("""
 <style>
 /* Status tiles - centered content */
 .status-tile {
-    padding: 16px 12px;
-    border-radius: 12px;
+    padding: 20px 16px;
+    border-radius: 14px;
     text-align: center;
-    margin: 4px 2px;
+    margin: 6px 4px;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.12);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 120px;
+    min-height: 140px;
 }
 .status-tile:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.18);
 }
 .status-tile .icon {
-    font-size: 24px;
-    margin-bottom: 8px;
+    font-size: 28px;
+    margin-bottom: 10px;
     line-height: 1;
+    display: block;
 }
 .status-tile h3 {
     margin: 0;
-    font-size: 13px;
+    padding: 0;
+    font-size: 15px;
     font-weight: 700;
     color: white;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    line-height: 1.2;
+    letter-spacing: 1.5px;
+    line-height: 1;
+    display: block;
 }
 .status-tile p {
-    margin: 8px 0 0 0;
-    font-size: 32px;
+    margin: 12px 0 0 0;
+    padding: 0;
+    font-size: 42px;
     font-weight: 800;
     color: white;
     line-height: 1;
+    display: block;
 }
 
 /* Status tile colors - clearer progression */

@@ -175,12 +175,16 @@ class SyncManager:
 
         # Get customer info - customer is just a string UID in the list response
         customer_uid = job_data.get("customer")
+        if isinstance(customer_uid, dict):
+            customer_uid = customer_uid.get("customer_uid") or str(customer_uid)
+
         # Get customer name from customer_address
         customer_name = location.get("first_name") or job_data.get("customer_name")
+        if isinstance(customer_name, dict):
+            customer_name = customer_name.get("name") or str(customer_name)
 
-        # Get address string
-        addr_parts = [location.get("street"), location.get("city"), location.get("state"), location.get("country")]
-        job_address = ", ".join([p for p in addr_parts if p]) if location else None
+        # Address not needed - only GPS coordinates are used for EU filtering
+        job_address = None
 
         # Get assigned user info
         assigned_to = job_data.get("assigned_to", []) or []

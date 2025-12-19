@@ -46,37 +46,45 @@ st.set_page_config(
 # Custom CSS for improved dashboard styling
 st.markdown("""
 <style>
-/* Status tiles - cleaner design */
+/* Status tiles - centered content */
 .status-tile {
-    padding: 12px 8px;
+    padding: 16px 12px;
     border-radius: 12px;
     text-align: center;
     margin: 4px 2px;
     cursor: pointer;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
 }
 .status-tile:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 .status-tile .icon {
-    font-size: 20px;
-    margin-bottom: 4px;
+    font-size: 24px;
+    margin-bottom: 8px;
+    line-height: 1;
 }
 .status-tile h3 {
     margin: 0;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 700;
     color: white;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    line-height: 1.2;
 }
 .status-tile p {
-    margin: 6px 0 0 0;
-    font-size: 28px;
-    font-weight: bold;
+    margin: 8px 0 0 0;
+    font-size: 32px;
+    font-weight: 800;
     color: white;
+    line-height: 1;
 }
 
 /* Status tile colors - clearer progression */

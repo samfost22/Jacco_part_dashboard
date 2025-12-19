@@ -43,43 +43,75 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for status tiles
+# Custom CSS for improved dashboard styling
 st.markdown("""
 <style>
+/* Status tiles - cleaner design */
 .status-tile {
-    padding: 15px 10px;
-    border-radius: 10px;
+    padding: 12px 8px;
+    border-radius: 12px;
     text-align: center;
-    margin: 5px;
+    margin: 4px 2px;
     cursor: pointer;
-    transition: transform 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 .status-tile:hover {
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+.status-tile .icon {
+    font-size: 20px;
+    margin-bottom: 4px;
 }
 .status-tile h3 {
     margin: 0;
-    font-size: 14px;
+    font-size: 11px;
+    font-weight: 600;
     color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 .status-tile p {
-    margin: 5px 0 0 0;
-    font-size: 24px;
+    margin: 6px 0 0 0;
+    font-size: 28px;
     font-weight: bold;
     color: white;
 }
-.tile-all { background-color: #607D8B; }
-.tile-new-ticket { background-color: #3498db; }
-.tile-received-request { background-color: #9b59b6; }
-.tile-parts-on-order { background-color: #f39c12; }
-.tile-shop-pick-up { background-color: #27ae60; }
-.tile-shipped { background-color: #16a085; }
-.tile-parts-delivered { background-color: #2ecc71; }
-.tile-done { background-color: #2ecc71; }
-.tile-canceled { background-color: #95a5a6; }
+
+/* Status tile colors - clearer progression */
+.tile-all { background: linear-gradient(135deg, #546E7A, #607D8B); }
+.tile-new { background: linear-gradient(135deg, #1976D2, #2196F3); }
+.tile-received { background: linear-gradient(135deg, #7B1FA2, #9C27B0); }
+.tile-ordered { background: linear-gradient(135deg, #F57C00, #FF9800); }
+.tile-pickup { background: linear-gradient(135deg, #00838F, #00ACC1); }
+.tile-shipped { background: linear-gradient(135deg, #00796B, #009688); }
+.tile-delivered { background: linear-gradient(135deg, #388E3C, #4CAF50); }
+.tile-done { background: linear-gradient(135deg, #2E7D32, #43A047); }
+.tile-canceled { background: linear-gradient(135deg, #757575, #9E9E9E); }
+
 .tile-selected {
-    box-shadow: 0 0 0 3px #fff, 0 0 0 5px #333;
-    transform: scale(1.05);
+    box-shadow: 0 0 0 3px #fff, 0 0 0 5px #1a1a1a !important;
+    transform: translateY(-2px) scale(1.02);
+}
+
+/* Job cards - cleaner look */
+.job-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    border-left: 4px solid #2196F3;
+}
+
+/* Better table styling */
+.dataframe {
+    font-size: 14px !important;
+}
+
+/* Sidebar improvements */
+section[data-testid="stSidebar"] {
+    background-color: #f5f5f5;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -184,45 +216,61 @@ def render_sync_info(lang: Language):
 def render_status_tiles(jobs_df: pd.DataFrame):
     """
     Render clickable status tiles for filtering.
-    Returns the selected status.
+    Uses icons and simple labels for better UX.
     """
     # Get status counts
     status_counts = jobs_df['job_status'].value_counts().to_dict()
     total_jobs = len(jobs_df)
 
-    # Status configuration with colors
+    # Status configuration: (display_label, api_status, icon, css_class)
+    # Using simple labels with icons for clarity
     statuses = [
-        ("All", total_jobs, "tile-all"),
-        ("New Ticket", status_counts.get("New Ticket", 0), "tile-new-ticket"),
-        ("Received Request", status_counts.get("Received Request", 0), "tile-received-request"),
-        ("Parts On Order", status_counts.get("Parts On Order", 0), "tile-parts-on-order"),
-        ("Shop Pick UP", status_counts.get("Shop Pick UP", 0), "tile-shop-pick-up"),
-        ("Shipped", status_counts.get("Shipped", 0), "tile-shipped"),
-        ("Parts delivered", status_counts.get("Parts delivered", 0), "tile-parts-delivered"),
-        ("Done", status_counts.get("Done", 0), "tile-done"),
-        ("Canceled", status_counts.get("Canceled", 0), "tile-canceled"),
+        ("All", "All", "📋", "tile-all", total_jobs),
+        ("New", "New Ticket", "🆕", "tile-new", status_counts.get("New Ticket", 0)),
+        ("Received", "Received Request", "📥", "tile-received", status_counts.get("Received Request", 0)),
+        ("Ordered", "Parts On Order", "🛒", "tile-ordered", status_counts.get("Parts On Order", 0)),
+        ("Pickup", "Shop Pick UP", "🏪", "tile-pickup", status_counts.get("Shop Pick UP", 0)),
+        ("Shipped", "Shipped", "📦", "tile-shipped", status_counts.get("Shipped", 0)),
+        ("Delivered", "Parts delivered", "✅", "tile-delivered", status_counts.get("Parts delivered", 0)),
+        ("Done", "Done", "🎉", "tile-done", status_counts.get("Done", 0)),
+        ("Canceled", "Canceled", "❌", "tile-canceled", status_counts.get("Canceled", 0)),
     ]
 
-    # Create columns for tiles
-    cols = st.columns(len(statuses))
-
-    for idx, (status_name, count, css_class) in enumerate(statuses):
-        with cols[idx]:
-            # Check if this status is selected
-            is_selected = st.session_state.status_filter == status_name
+    # Display in 2 rows for better readability
+    # Row 1: All, New, Received, Ordered, Pickup
+    row1 = statuses[:5]
+    cols1 = st.columns(5)
+    for idx, (label, api_status, icon, css_class, count) in enumerate(row1):
+        with cols1[idx]:
+            is_selected = st.session_state.status_filter == api_status
             selected_class = "tile-selected" if is_selected else ""
-
-            # Render tile as HTML
             st.markdown(f"""
                 <div class="status-tile {css_class} {selected_class}">
-                    <h3>{status_name}</h3>
+                    <div class="icon">{icon}</div>
+                    <h3>{label}</h3>
                     <p>{count}</p>
                 </div>
             """, unsafe_allow_html=True)
+            if st.button("Select", key=f"tile_{api_status}", use_container_width=True):
+                st.session_state.status_filter = api_status
+                st.rerun()
 
-            # Button to select this status (hidden label)
-            if st.button("Select", key=f"tile_{status_name}", use_container_width=True):
-                st.session_state.status_filter = status_name
+    # Row 2: Shipped, Delivered, Done, Canceled (centered with spacing)
+    row2 = statuses[5:]
+    cols2 = st.columns([1, 1, 1, 1, 1])  # 5 columns, use middle 4
+    for idx, (label, api_status, icon, css_class, count) in enumerate(row2):
+        with cols2[idx]:
+            is_selected = st.session_state.status_filter == api_status
+            selected_class = "tile-selected" if is_selected else ""
+            st.markdown(f"""
+                <div class="status-tile {css_class} {selected_class}">
+                    <div class="icon">{icon}</div>
+                    <h3>{label}</h3>
+                    <p>{count}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("Select", key=f"tile_{api_status}", use_container_width=True):
+                st.session_state.status_filter = api_status
                 st.rerun()
 
 

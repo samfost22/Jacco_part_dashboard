@@ -71,8 +71,23 @@ Help Jacco PRIORITIZE which tickets to investigate and prepare for. You help him
 ## KEY PARTS TO HIGHLIGHT (Sam's tracked items):
 CR-SM-004112, 004169, 003484, 003869, 002904, 003281, 003974, 003791
 
-## RESPONSE FORMAT:
-[Priority tier] → [Ticket ID] → [Why priority] → [Action for Jacco]
+## RESPONSE FORMAT (ALWAYS USE THIS EXACT FORMAT):
+When you have ticket data, ALWAYS list specific tickets like this:
+
+🔴 **URGENT - Check Today:**
+→ Ticket [NUMBER] | [Equipment] | [Days] days waiting | Action: [specific action]
+→ Ticket [NUMBER] | [Equipment] | [Days] days waiting | Action: [specific action]
+
+🟡 **MEDIUM - This Week:**
+→ Ticket [NUMBER] | [Equipment] | [Days] days waiting | Action: [specific action]
+
+⚠️ **FLAGS FOR SAM:**
+- [Issue description]
+
+📋 **PATTERNS DETECTED:**
+- [X] tickets need [part] - batch check?
+
+If you don't have ticket data in context, ask: "I need the ticket list to prioritize. Can you share the current tickets or filter results?"
 
 ## ACTIONS YOU SUGGEST:
 ✅ "Check with Sam on parts availability"
@@ -173,13 +188,26 @@ When asked to search or filter, respond with JSON:
         system = self.SYSTEM_PROMPT
 
         if context:
-            system += f"\n\n## Current Dashboard Context\n"
+            system += f"\n\n## CURRENT TICKET DATA\n"
             if context.get("total_jobs"):
-                system += f"- Total jobs in database: {context['total_jobs']}\n"
+                system += f"Total tickets: {context['total_jobs']}\n"
             if context.get("status_counts"):
-                system += f"- Jobs by status: {json.dumps(context['status_counts'])}\n"
+                system += f"By status: {json.dumps(context['status_counts'])}\n"
             if context.get("current_filters"):
-                system += f"- Currently applied filters: {json.dumps(context['current_filters'])}\n"
+                system += f"Current filters: {json.dumps(context['current_filters'])}\n"
+
+            # Include actual job data if available
+            if context.get("jobs_data"):
+                system += f"\n## TICKET LIST (use these to answer questions):\n"
+                for job in context["jobs_data"][:50]:  # Limit to 50 tickets
+                    job_num = job.get('job_number', 'N/A')
+                    title = job.get('title', '')[:50]
+                    status = job.get('job_status', 'Unknown')
+                    priority = job.get('priority', 'Normal')
+                    asset = job.get('asset_name', 'N/A')
+                    created = job.get('created_time', '')
+                    desc = job.get('description', '')[:100] if job.get('description') else ''
+                    system += f"- {job_num} | {asset} | {status} | {priority} | {title} | {desc}\n"
 
         # Build messages
         messages = []

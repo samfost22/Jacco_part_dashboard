@@ -629,18 +629,19 @@ def render_ai_assistant_page(lang: Language):
         jobs_df = JobQueries.get_all_eu_parts_jobs()
         jobs_list = jobs_df.to_dict('records') if not jobs_df.empty else []
 
-        # Build context for AI
+        # Build context for AI - include actual job data for ticket-specific responses
         status_counts = jobs_df['job_status'].value_counts().to_dict() if not jobs_df.empty else {}
         context = {
             "total_jobs": len(jobs_df),
             "status_counts": status_counts,
-            "current_filters": None
+            "current_filters": None,
+            "jobs_data": jobs_list  # Pass actual job data so AI can reference specific tickets
         }
 
     except Exception as e:
         logger.error(f"Error loading jobs for AI: {e}")
         jobs_list = []
-        context = {"total_jobs": 0, "status_counts": {}}
+        context = {"total_jobs": 0, "status_counts": {}, "jobs_data": []}
 
     # Two-column layout
     col1, col2 = st.columns([2, 1])

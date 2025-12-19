@@ -197,28 +197,28 @@ class SyncManager:
         # Extract and prepare job data
         params = (
             job_uid,
-            job_data.get("work_order_number"),  # integer in Zuper
-            job_data.get("job_title"),
-            job_data.get("job_description"),
-            job_status,
-            job_category,
-            job_data.get("job_priority"),
-            customer_name,
-            customer_uid,
-            job_address,
-            lat,
-            lon,
-            assigned_technician,
-            technician_uid,
-            self._format_datetime(job_data.get("scheduled_start_time")),
-            self._format_datetime(job_data.get("scheduled_end_time")),
-            self._format_datetime(job_data.get("actual_start_time")),
-            self._format_datetime(job_data.get("actual_end_time")),
-            self._format_datetime(job_data.get("created_at")),
-            self._format_datetime(job_data.get("updated_at")),
-            job_data.get("parts_status"),
-            self._format_datetime(job_data.get("parts_delivered_date")),
-            json.dumps(job_data.get("custom_fields", [])),  # custom_fields is an array
+            job_data.get("jobNumber"),
+            job_data.get("title"),
+            job_data.get("description"),
+            job_data.get("jobStatus"),
+            job_data.get("jobCategory"),
+            job_data.get("priority"),
+            job_data.get("customerName"),
+            job_data.get("customerUid"),
+            job_data.get("jobAddress"),
+            job_data.get("latitude"),
+            job_data.get("longitude"),
+            job_data.get("assignedTechnician"),
+            job_data.get("technicianUid"),
+            self._format_datetime(job_data.get("scheduledStartTime")),
+            self._format_datetime(job_data.get("scheduledEndTime")),
+            self._format_datetime(job_data.get("actualStartTime")),
+            self._format_datetime(job_data.get("actualEndTime")),
+            self._format_datetime(job_data.get("createdTime")),
+            self._format_datetime(job_data.get("modifiedTime")),
+            job_data.get("partsStatus"),
+            self._format_datetime(job_data.get("partsDeliveredDate")),
+            json.dumps(job_data.get("customFields", {})),
             tags
         )
 
@@ -242,7 +242,6 @@ class SyncManager:
         try:
             # Handle ISO format with timezone
             if 'T' in dt_string:
-                # Remove timezone info if present and parse
                 dt_string = dt_string.replace('Z', '+00:00')
                 dt = datetime.fromisoformat(dt_string)
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -292,6 +291,12 @@ class SyncManager:
         completed = stats.get("completed")
         completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
         started_str = stats.get("started").strftime('%Y-%m-%d %H:%M:%S') if stats.get("started") else None
+
+        completed = stats.get("completed")
+        completed_str = completed.strftime('%Y-%m-%d %H:%M:%S') if completed else None
+
+        started = stats.get("started")
+        started_str = started.strftime('%Y-%m-%d %H:%M:%S') if started else None
 
         params = (
             completed_str,

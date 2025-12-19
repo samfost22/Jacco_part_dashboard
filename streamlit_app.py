@@ -199,8 +199,6 @@ def render_sidebar():
         pages = {
             "Dashboard": "dashboard",
             lang.get("job_lookup"): "job_lookup",
-            lang.get("bulk_lookup"): "bulk_lookup",
-            lang.get("parts_inventory"): "parts_inventory",
         }
 
         if FeatureFlags.ENABLE_MANUAL_SYNC:
